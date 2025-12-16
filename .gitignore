@@ -1,0 +1,60 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Linker files
+*.ilk
+
+# Debugger Files
+*.pdb
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# debug information files
+*.dwo
+
+*.code-workspace
+
+#srs/credentials.h
+#credentials.h
+srs/credentials.cpp
+credentials.cpp
+
+*.kicad_prl
+*.kicad_pro
+local-zappi-power-backups
+fp-info-cache
+\#auto_saved_files\#
+_autosave-local-zappi-power.kicad_pcb
+.vscode
+.pio
+lib
+include
+test

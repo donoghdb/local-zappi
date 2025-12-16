@@ -1,0 +1,203 @@
+esphome:
+  name: zappi-controller
+  platform: ESP32
+
+  # Include our logic file
+  includes:
+    - zappi_logic.h
+
+  # Initialize the Interrupt on Boot
+  on_boot:
+    priority: 600
+    then:
+      - lambda: |-
+          setup_zappi(3); // Setup GPIO 3 for Interrupts
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+
+wifi:
+  ssid: "YOUR_WIFI_SSID"
+  password: "YOUR_WIFI_PASS"
+  
+  # Enable fallback hotspot in case wifi fails
+  ap:
+    ssid: "Zappi-Fallback"
+    password: "password123"
+
+# Enable Home Assistant API
+api:
+
+# Enable OTA updates
+ota:
+  - platform: esphome
+
+
+captive_portal:
+  
+globals:
+   - id: current_mode_index
+     type: int
+     restore_value: true # Remembers state after reboot
+     initial_value: '0'  # 0 = Stopped    
+
+# --- SENSORS (Using Template Platform) ---
+sensor:
+  # 1. THE DUTY CYCLE SENSOR (Uses C++ logic for interrupts)
+  - platform: template
+    name: "Zappi Duty Cycle"
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    update_interval: 1s
+    lambda: |-
+      return get_zappi_duty();
+
+  - platform: template
+    name: "Zappi Pilot Amps"
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    update_interval: 1s
+    lambda: |-
+      return get_zappi_duty() * 0.6;
+
+  # 2. THE PEAK ADC SENSOR (Reads Voltage)
+  - platform: template
+    name: "Zappi Peak ADC"
+    id: zappi_peak_adc
+    update_interval: 1s
+    accuracy_decimals: 0
+    lambda: |-
+      // Scan for 15ms to find the highest voltage peak
+      int max_val = 0;
+      unsigned long start = millis();
+      while (millis() - start < 15) {
+        int v = analogRead(8); 
+        if (v > max_val) max_val = v;
+      }
+      return max_val;
+    
+    # 3. UPDATE STATUS TEXT BASED ON YOUR RANGES
+    on_value:
+      then:
+        - lambda: |-
+            int v = id(zappi_peak_adc).state;
+            
+            // Your Custom Ranges
+            if (v >= 3600) {
+              id(zappi_status).publish_state("Unplugged (A)");
+            } 
+            else if (v >= 3100) {
+              id(zappi_status).publish_state("Connected (B)");
+            } 
+            else if (v >= 2500) {
+              id(zappi_status).publish_state("Charging (C)");
+            } 
+            else if (v >= 1900) {
+              id(zappi_status).publish_state("Ventilation (D)");
+            } 
+            else if (v >= 1500) {
+              id(zappi_status).publish_state("No Power (E)");
+            } 
+            else {
+              id(zappi_status).publish_state("Error (F)");
+            }
+
+# Translate Raw State Number to Text
+text_sensor:
+  - platform: template
+    name: "Zappi Status"
+    id: zappi_status
+  - platform: template
+    name: "Zappi Target Mode"
+    id: zappi_target_mode
+    update_interval: 0s # Updates only when triggered
+    lambda: |-
+      int i = id(current_mode_index);
+      if (i == 0) return {"Stopped"};
+      if (i == 1) return {"Fast"};
+      if (i == 2) return {"Eco"};
+      if (i == 3) return {"Eco++"};
+      return {"Unknown"};    
+
+# --- BUTTON CONTROLS & RELAY ---
+switch:
+  # 1. The Relay on GPIO 17
+  - platform: gpio
+    pin: 17
+    id: zappi_relay
+    name: "Zappi Relay"
+    # Note: If your relay triggers when 'OFF' instead of 'ON', set inverted: true
+    inverted: false 
+
+  # 2. The Internal Buttons (Hidden triggers for the momentary buttons below)
+  - platform: gpio
+    pin: 
+      number: 4
+      inverted: true 
+    id: btn_enter_relay
+    internal: true 
+
+  - platform: gpio
+    pin: 5
+    id: btn_up_relay
+    internal: true
+
+  - platform: gpio
+    pin: 6
+    id: btn_down_relay
+    internal: true
+    
+  - platform: gpio
+    pin: 7
+    id: btn_select_relay
+    internal: true
+
+# Home Assistant Clickable Buttons
+button:
+  - platform: template
+    name: "Zappi Enter"
+    on_press:
+      - switch.turn_on: btn_enter_relay
+      - delay: 200ms
+      - switch.turn_off: btn_enter_relay
+
+  - platform: template
+    name: "Zappi Up"
+    on_press:
+      # 1. Physically click the relay
+      - switch.turn_on: btn_up_relay
+      - delay: 200ms
+      - switch.turn_off: btn_up_relay
+      
+      # 2. Cycle the State UP (0->1->2->3->0)
+      - lambda: |-
+          id(current_mode_index) += 1;
+          if (id(current_mode_index) > 3) {
+            id(current_mode_index) = 0;
+          }
+          id(zappi_target_mode).update();
+
+  - platform: template
+    name: "Zappi Down"
+    on_press:
+      # 1. Physically click the relay
+      - switch.turn_on: btn_down_relay
+      - delay: 200ms
+      - switch.turn_off: btn_down_relay
+      
+      # 2. Cycle the State DOWN (0->3->2->1->0)
+      - lambda: |-
+          id(current_mode_index) -= 1;
+          if (id(current_mode_index) < 0) {
+            id(current_mode_index) = 3;
+          }
+          id(zappi_target_mode).update();
+
+  - platform: template
+    name: "Zappi Select"
+    on_press:
+      - switch.turn_on: btn_select_relay
+      - delay: 200ms
+      - switch.turn_off: btn_select_relay    

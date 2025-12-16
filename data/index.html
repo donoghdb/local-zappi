@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+      body { font-family: Arial, sans-serif; text-align: center; margin: 0; padding-bottom: 20px; }
+      
+      /* Main Menu Styles */
+      #menuDisplay {
+        text-align: left;
+        background-color: #f0f0f0;
+        width: 300px;
+        margin: 20px auto;
+        border-radius: 8px;
+        padding: 10px;
+        font-family: monospace;
+      }
+      #menuItems { list-style-type: none; padding: 0; margin: 0; }
+      #menuItems li { padding: 4px 6px; border-radius: 4px; }
+      #menuItems li.selected { background-color: #2b5cbe; color: white; font-weight: bold; }
+
+      /* Buttons */
+      button {
+        width: 150px; height: 60px; font-size: 18px; margin: 15px;
+        background-color: lightgray; border: none; border-radius: 10px; cursor: pointer;
+      }
+      .button-row { display: flex; justify-content: center; gap: 10px; margin-bottom: 10px; }
+      .fa { margin-right: 10px; }
+      @keyframes blink { 0% { background-color: green; } 50% { background-color: lightgray; } 100% { background-color: green; } }
+      .blink { animation: blink 0.5s ease-in-out; }
+
+      /* Status Boxes */
+      .status {
+        font-size: 20px; margin-top: 20px; padding: 10px; border: 2px solid #ccc;
+        border-radius: 5px; background-color: #f5f5f5; width: 40%; margin: 10px auto;
+        display: flex; justify-content: space-between; align-items: center; text-align: left;
+      }
+      .status .label { flex: 1; font-weight: bold; color: #333; }
+      .status .value { text-align: right; font-weight: bold; color: #333; }
+
+      /* --- FOOTER STYLES (Updated) --- */
+      .footer-row {
+        /* Match the width of status boxes */
+        width: 40%;
+        margin: 20px auto; /* Center the row */
+        
+        padding: 10px;
+        border-top: 2px solid #ddd; /* Match border thickness */
+        /* Optional: Add a full border to look exactly like a box, 
+           or keep just top border for a "footer" look. 
+           Here I kept it subtle but aligned. */
+        
+        /* Flex magic for Left - Center - Right layout */
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .mini-button {
+        width: auto;
+        padding: 8px 15px;
+        height: auto;
+        font-size: 14px;
+        background-color: #e8e8e8;
+        color: #555;
+        border-radius: 5px; /* Match radius */
+        margin: 0; 
+      }
+      .mini-button:hover { background-color: #d0d0d0; color: black; }
+
+      /* Status Indicator Style */
+      #statusIndicator {
+        padding: 8px 15px;
+        border-radius: 6px;
+        background: gray;
+        color: white;
+        font-size: 14px;
+        font-weight: bold;
+        min-width: 80px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Zappi Local Control</h2>
+    
+    <div class="button-row">
+      <button id="enterButton" onclick="sendCommand('enter', 'enterButton')"><i class="fa fa-bars"></i> Enter</button>
+      <button id="upButton" onclick="sendCommand('up', 'upButton')"><i class="fa fa-arrow-up"></i> Up</button>
+      <button id="downButton" onclick="sendCommand('down', 'downButton')"><i class="fa fa-arrow-down"></i> Down</button>
+      <button id="selectButton" onclick="sendCommand('select', 'selectButton')"><i class="fa fa-plus"></i> Select</button>
+    </div>
+    
+    <div class="button-row">
+      <button id="boostButton" onclick="sendCommand('boost', 'boostButton')"><i class="fa fa-bolt"></i> Boost</button>
+      <button id="restartButton" onclick="sendCommand('restart', 'restartButton')"><i class="fa fa-rotate-left"></i> Restart</button>
+      <button id="resetMenuButton" onclick="sendCommand('menuReset','resetMenuButton')"><i class="fa fa-sliders-h"></i> Reset Menu</button>
+      <button id="resetModeButton" onclick="sendCommand('resetmode', 'resetModeButton')"><i class="fa fa-undo"></i> Reset Mode</button>
+    </div>
+
+    <div id="menuDisplay" class="status">
+      <h3 id="menuTitle">Menu</h3>
+      <ul id="menuItems"></ul>
+    </div>
+
+    <div id="chargerStatus" class="status">
+      <span class="label">Charger Status:</span><span class="value">Unknown</span>
+    </div>
+    <div id="carConnectionStatus" class="status">
+      <i class="fa fa-question-circle"></i><span class="label">Car Connection:</span><span class="value">Unknown</span>
+    </div>
+    <div id="chargingState" class="status">
+      <i class="fa fa-question-circle"></i><span class="label">Charging State:</span><span class="value">Unknown</span>
+    </div>
+
+    <div class="footer-row">
+      <button class="mini-button" onclick="window.open('/webserial', '_blank')">
+        <i class="fa fa-terminal"></i> WebSerial
+      </button>
+      
+      <button class="mini-button" onclick="window.location.href='/upload'">
+        <i class="fa fa-upload"></i> Upload
+      </button>
+
+      <div id="statusIndicator">Offline</div>
+    </div>
+
+    <script>
+      function sendCommand(command, buttonId) {
+        fetch('/' + command)
+          .then(response => response.text())
+          .then(data => {
+            if (command === 'restart') alert("ESP32 is restarting...");
+            if (command == 'boost') {
+              const boostButton = document.getElementById('boostButton');
+              boostButton.style.backgroundColor = (data === 'ON') ? 'green' : 'lightgray';
+            }
+          })
+          .catch(error => console.error("Fetch error:", error));
+      }
+
+      var socket = new WebSocket("ws://" + window.location.hostname + "/ws");
+      socket.onopen = function() {
+        document.getElementById("statusIndicator").textContent = "Connected";
+        document.getElementById("statusIndicator").style.background = "green";
+        socket.send(JSON.stringify({event: "request_state"}));
+        closeMenuDisplay();
+      };
+      socket.onclose = function() {
+        document.getElementById("statusIndicator").textContent = "Disconnected";
+        document.getElementById("statusIndicator").style.background = "red";
+      };
+      socket.onerror = function() {
+        document.getElementById("statusIndicator").textContent = "Error";
+        document.getElementById("statusIndicator").style.background = "orange";
+      };
+
+      socket.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        if (data.charger_status) updateChargerStatus(data.charger_status);
+        if (data.car_connection_status) updateCarConnectionStatus(data.car_connection_status);
+        if (data.charging_state) updateChargingState(data.charging_state);
+        if (data.boost_state) {
+          document.getElementById("boostButton").style.backgroundColor = data.boost_state === "ON" ? "green" : "lightgray";
+        }
+        if (data.menu_title) updateMenuDisplay(data);
+        if (data.event === "menu_closed") closeMenuDisplay();
+        if (data.event === "button_press" && data.button) blinkButton(data.button);
+      };
+
+      function closeMenuDisplay() {
+        const menuDisplay = document.getElementById("menuDisplay");
+        if (menuDisplay) menuDisplay.style.display = "none";
+      }
+
+      function updateMenuDisplay(menu) {
+        const menuDisplay = document.getElementById("menuDisplay");
+        menuDisplay.style.display = "block";
+        document.getElementById("menuTitle").textContent = menu.menu_title;
+        const menuItems = document.getElementById("menuItems");
+        menuItems.innerHTML = "";
+        menu.items.forEach(item => {
+          const li = document.createElement("li");
+          li.textContent = item.name;
+          if (item.selected) li.classList.add("selected");
+          menuItems.appendChild(li);
+        });
+      }
+
+      function blinkButton(buttonId) {
+        const button = document.getElementById(buttonId);
+        if (!button) return;
+        button.classList.add("blink");
+        setTimeout(() => button.classList.remove("blink"), 200);
+      }
+
+      function updateChargerStatus(status) {
+        const div = document.getElementById("chargerStatus");
+        div.querySelector(".value").textContent = status;
+        div.style.backgroundColor = status === "Fast" ? "green" : status === "Eco" ? "DodgerBlue" : status === "Eco++" ? "royalblue" : status === "Stopped" ? "orange" : "lightgray";
+        div.style.color = status === "Unknown" ? "black" : "white";
+      }
+
+      function updateCarConnectionStatus(status) {
+        const div = document.getElementById("carConnectionStatus");
+        const icon = div.querySelector("i");
+        div.querySelector(".value").textContent = status;
+        icon.className = status === "EV Connected" ? "fa fa-car" : status === "EV Disconnected" ? "fa fa-car-slash" : "fa fa-exclamation-triangle";
+        div.style.backgroundColor = status === "EV Connected" ? "green" : status === "EV Disconnected" ? "orange" : "red";
+        div.style.color = "white";
+      }
+
+      function updateChargingState(state) {
+        const div = document.getElementById("chargingState");
+        const icon = div.querySelector("i");
+        div.querySelector(".value").textContent = state;
+        if (state === "Charging") { div.style.backgroundColor = "blue"; icon.className = "fa fa-battery-three-quarters"; }
+        else if (state === "Connected") { div.style.backgroundColor = "green"; icon.className = "fa fa-plug"; }
+        else { div.style.backgroundColor = "gray"; icon.className = "fa fa-question-circle"; }
+        div.style.color = "white";
+      }
+    </script>
+  </body>
+</html>
