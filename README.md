@@ -85,6 +85,7 @@ const char* mqttClientId = "Zappi_Controller";
 IPAddress staticIP(192, 168, 1, 200);
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
+```
 
 ## ⚡ Installation (Custom Firmware / PlatformIO)
 
