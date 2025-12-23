@@ -5,7 +5,7 @@
   <img src="docs/Local Zappi.jpg" width="45%" />
 </p>
 
-A dedicated hardware implant for Myenergi Zappi V2.x EV Chargers. This project interfaces directly with the Zappi's internal control bus to provide **Local MQTT**, **Home Assistant**, and **Web Control** without relying on the Myenergi Cloud or Hub.
+A dedicated hardware implant for Myenergi Zappi V2.x EV Chargers. This project interfaces directly with the Zappi's internal control bus to provide **Local MQTT**, **Home Assistant**, and **Web Control** without relying on the Myenergi Cloud or Hub. It is intended to action on the 4 external buttons while monitoring the EVSE CP line conversation between the Zappi and the car. It does not affect the software of the Zappi nor does it affect anything else. So it can be removed without affecting anything else.
 
 ## ⚠️ DANGER: HIGH VOLTAGE
 **This device is installed INSIDE a 240V/400V EV Charger.**
