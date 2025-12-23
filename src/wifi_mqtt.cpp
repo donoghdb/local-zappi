@@ -137,7 +137,7 @@ void onMqttConnect(bool sessionPresent) {
 
   for (int i = 0; i < 4; i++) {
     char subTopic[128];
-    snprintf(subTopic, sizeof(subTopic), "%s/switch/button%d/command", baseTopic, i + 1);
+    snprintf(subTopic, sizeof(subTopic), "%s/button/button%d/command", baseTopic, i + 1);
     mqttClient.subscribe(subTopic, 1);
   }
 
@@ -220,12 +220,13 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
   // 6. Buttons
   for (int i = 0; i < 4; i++) {
     char btnCmd[128];
-    snprintf(btnCmd, sizeof(btnCmd), "%s/switch/button%d/command", baseTopic, i + 1);
+    snprintf(btnCmd, sizeof(btnCmd), "%s/button/button%d/command", baseTopic, i + 1);
     
-    if (receivedTopic.equals(btnCmd) && payloadStr.equals("ON")) {
-      char btnState[128];
-      snprintf(btnState, sizeof(btnState), "%s/switch/button%d/state", baseTopic, i + 1);
-      handleButtons(btnState, i); // Logic inside hardware.cpp
+    if (receivedTopic.equals(btnCmd) && payloadStr.equals("PRESS")) {
+      DEBUG_PRINTF("Button %d Pressed\n", i + 1);
+      //char btnState[128];
+      //snprintf(btnState, sizeof(btnState), "%s/button/button%d/state", baseTopic, i + 1);
+      handleButtons(nullptr, i); // Logic inside hardware.cpp
     }
   }
 }
@@ -278,10 +279,10 @@ void sendButtonDiscovery(const char *name, int buttonIndex) {
   JsonDocument discoveryDoc;
   discoveryDoc["name"] = name;
   
-  char statTopic[128]; snprintf(statTopic, sizeof(statTopic), "%s/switch/button%d/state", baseTopic, buttonIndex);
+  char statTopic[128]; snprintf(statTopic, sizeof(statTopic), "%s/button/button%d/state", baseTopic, buttonIndex);
   discoveryDoc["stat_t"] = statTopic;
   
-  char cmdTopic[128]; snprintf(cmdTopic, sizeof(cmdTopic), "%s/switch/button%d/command", baseTopic, buttonIndex);
+  char cmdTopic[128]; snprintf(cmdTopic, sizeof(cmdTopic), "%s/button/button%d/command", baseTopic, buttonIndex);
   discoveryDoc["cmd_t"] = cmdTopic;
   
   discoveryDoc["pl_on"] = "ON";
@@ -301,7 +302,7 @@ void sendButtonDiscovery(const char *name, int buttonIndex) {
 
   String discoveryPayload; serializeJson(discoveryDoc, discoveryPayload);
   
-  char confTopic[128]; snprintf(confTopic, sizeof(confTopic), "%s/switch/button%d/config", haPrefix, buttonIndex);
+  char confTopic[128]; snprintf(confTopic, sizeof(confTopic), "%s/button/button%d/config", haPrefix, buttonIndex);
   
   if (mqttClient.connected()) {
     mqttClient.publish(confTopic, 1, true, discoveryPayload.c_str());

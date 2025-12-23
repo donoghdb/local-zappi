@@ -243,9 +243,9 @@ void buttonReleaseTask(void *pvParameters) {
         digitalWrite(buttonPins[i], LOW);
         buttonPressTime[i] = 0;
         
-        char buf[64];
-        snprintf(buf, sizeof(buf), "%s/switch/button%d/state", baseTopic, i + 1);
-        if (mqttClient.connected()) mqttClient.publish(buf, 1, true, "OFF");
+        //char buf[64];
+        //snprintf(buf, sizeof(buf), "%s/switch/button%d/state", baseTopic, i + 1);
+        //if (mqttClient.connected()) mqttClient.publish(buf, 1, true, "OFF");
       }
     }
     vTaskDelay(delayTicks);
@@ -314,7 +314,9 @@ String handleBoost() {
 }
 
 void handleButtons(const char *buttontopic, int index) {
-  if (mqttClient.connected()) mqttClient.publish(buttontopic, 1, true, "ON");
+  if (buttontopic != nullptr && mqttClient.connected()) {
+      mqttClient.publish(buttontopic, 1, true, "ON");
+  }
   
   ignoreNextReturn[index] = true;
   maskUntil[index] = xTaskGetTickCount() + maskDurationTicks;
