@@ -14,6 +14,9 @@ const char *chargingOptions[] = {
   "Ventilation Required", "No Power, Ready to Connect", "--- EVSE ERROR ---"
 };
 
+unsigned long lastRssiCheck = 0;
+const int MIN_RSSI_THRESHOLD = -85; // Signal is "bad" if worse than -85dBm
+
 // ===============================
 //  TOPIC SETUP (Merged from setupTopics.cpp)
 // ===============================
@@ -64,8 +67,46 @@ void setupTopics() {
 // ===============================
 
 void connectToWifi() {
-  DEBUG_PRINTLN("Connecting to WiFi...");
-  WiFi.begin(ssid, password);
+  DEBUG_PRINTLN("Scanning for strongest AP...");
+  
+  // 1. Scan for all networks (Synchronous scan)
+  int n = WiFi.scanNetworks();
+  
+  // Variables to hold the best AP info
+  int bestSignal = -127;
+  uint8_t bestBSSID[6];
+  int32_t bestChannel = 0;
+  bool found = false;
+
+  // 2. Iterate through results to find your SSID with best RSSI
+  for (int i = 0; i < n; ++i) {
+    if (WiFi.SSID(i) == ssid) { // 'ssid' comes from credentials.h
+      DEBUG_PRINT("Found: "); 
+      DEBUG_PRINT(WiFi.SSID(i));
+      DEBUG_PRINT(" (");
+      DEBUG_PRINT(WiFi.RSSI(i));
+      DEBUG_PRINTLN("dBm)");
+
+      if (WiFi.RSSI(i) > bestSignal) {
+        bestSignal = WiFi.RSSI(i);
+        bestChannel = WiFi.channel(i);
+        memcpy(bestBSSID, WiFi.BSSID(i), 6);
+        found = true;
+      }
+    }
+  }
+  
+  // 3. Connect to the Specific Best AP
+  if (found) {
+    DEBUG_PRINTF("Connecting to Strongest BSSID: %02X:%02X:%02X:%02X:%02X:%02X at %d dBm\n", 
+                 bestBSSID[0], bestBSSID[1], bestBSSID[2], bestBSSID[3], bestBSSID[4], bestBSSID[5], bestSignal);
+                 
+    // This overload of begin() forces a specific BSSID and Channel
+    WiFi.begin(ssid, password, bestChannel, bestBSSID);
+  } else {
+    DEBUG_PRINTLN("Target SSID not found, using standard connect...");
+    WiFi.begin(ssid, password);
+  }
 }
 
 void connectToMqtt() {
@@ -84,6 +125,23 @@ void wifiConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
 void wifiDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
   DEBUG_PRINTLN("WiFi disconnected");
   xTimerStart(wifiReconnectTimer, 0);
+}
+
+void checkSignalHealth() {
+  if (millis() - lastRssiCheck > 60000) { // Check every 60 seconds
+    lastRssiCheck = millis();
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      long rssi = WiFi.RSSI();
+      if (rssi < MIN_RSSI_THRESHOLD) {
+        DEBUG_PRINTF("Signal Weak (%d dBm). Reconnecting to find better AP...\n", rssi);
+        
+        // Disconnect and let the auto-reconnect logic (which now Scans) take over
+        WiFi.disconnect(); 
+        // Note: Your existing wifiDisconnectHandler should trigger the reconnect timer
+      }
+    }
+  }
 }
 
 void setupMqtt() {

@@ -9,6 +9,7 @@
 void connectToWifi();
 void connectToMqtt();
 void setupMqtt(); // Helper to configure the client
+void checkSignalHealth();
 
 // Callbacks
 void wifiConnected(WiFiEvent_t event, WiFiEventInfo_t info);

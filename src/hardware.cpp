@@ -103,8 +103,7 @@ void IRAM_ATTR handleInterrupt() {
 //  ADC & MEASUREMENT LOGIC
 // ===============================
 void measureDutyCycle() {
-    
-    // 1. Snapshot variables safely
+    // 1. Snapshot variables safely (CRITICAL SECTION)
     portENTER_CRITICAL(&synch);
     bool detected = pulseDetected;
     unsigned long localStart = pulseStart;
@@ -115,19 +114,23 @@ void measureDutyCycle() {
 
     // 2. Process New Pulse
     if (detected) {
+        // J1772 Pulse logic: Width is the high time.
+        // Basic check: End time must be after Start time
         if (localEnd > localStart) {
             long pulseWidth = localEnd - localStart;
 
-            // Sanity Filter: J1772 is < 1000us. 
-            // We ignore glitches > 1200us (like the 3600us you saw before).
-            if (pulseWidth < 1200 && pulseWidth > 0) { 
+            // Sanity Filter: J1772 is 1kHz (1000us period). 
+            // Valid pulses are usually 100us (10%) to 960us (96%).
+            // We ignore glitches > 1200us.
+            if (pulseWidth < 1200 && pulseWidth > 80) { 
                 
                 // VALID PULSE: Update Memory
+                // Calculation: (HighTime / 1000us) * 100%
                 storedDuty = (static_cast<float>(pulseWidth) / 1000.0f) * 100.0f;
 
                 // Clamp to legal range
                 if (storedDuty > 99.9f) storedDuty = 100.0f;
-                else if (storedDuty <= 0.3f) storedDuty = 0.0f;
+                else if (storedDuty <= 5.0f) storedDuty = 0.0f; // J1772 usually min 6A (10%)
 
                 storedAmps = storedDuty * 0.6f;
                 lastValidPulseTime = millis(); // Refresh timestamp
@@ -140,18 +143,34 @@ void measureDutyCycle() {
         
         float dutyToReport = 0.0;
         float ampsToReport = 0.0;
+        
+        // ONLY report values if we are technically in a Charging State (C or D)
+        if (newState == STATE_C || newState == STATE_D) {
+            
+            // We are Charging. Now check if the signal is fresh.
+            if (millis() - lastValidPulseTime < 2500) {
+                 // Signal is Strong -> Use live data
+                 dutyToReport = storedDuty;
+                 ampsToReport = storedAmps;
+            } else {
+                 // Signal is Weak/Missing, but Voltage says C -> LATCH
+                 // (Assume we are still charging at the last known rate)
+                 dutyToReport = storedDuty;
+                 ampsToReport = storedAmps;
+            }
 
-        // CHECK MEMORY: Is the data fresh? (younger than 2 seconds)
-        // If we haven't seen a pulse in 2 seconds, assume signal is DC (0 Amps).
-        if (millis() - lastValidPulseTime < 2000) {
-            dutyToReport = storedDuty;
-            ampsToReport = storedAmps;
         } else {
-            // Signal Lost / Steady DC
+            // We are in State A, B (Charge Complete), E, or F.
+            // Even if Zappi is sending a PWM "Offer", the car is taking 0.
             dutyToReport = 0.0;
             ampsToReport = 0.0;
+            
+            // Optional: Clear stored memory so the next charge starts fresh
+            storedDuty = 0.0;
+            storedAmps = 0.0;
         }
 
+        // 4. Send to MQTT & Web
         String json = "{\"dutyCycle\":" + String(dutyToReport) + ",\"dutyCycleAmps\":" + String(ampsToReport) + "}";
         
         if (mqttClient.connected()) {
@@ -163,6 +182,7 @@ void measureDutyCycle() {
         lastSampleTimeDutyCycle = millis();
     }
 }
+
                 
 
 

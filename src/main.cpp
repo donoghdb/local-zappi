@@ -155,6 +155,9 @@ void loop() {
   ArduinoOTA.handle();
   esp_task_wdt_reset();
 
+  // Checks WiFi signal every 30 seconds and reconnects if weak
+  checkSignalHealth();
+  
   // Print Memory Stats every 60 seconds
   if (millis() - lastHeapPrint > 60000) {
     lastHeapPrint = millis();
