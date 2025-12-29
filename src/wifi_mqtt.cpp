@@ -503,6 +503,8 @@ void MqttDiscoveryInitial() {
   publishDiscovery("Zappi IP", "zappi_ip", "", "wadsf334", "mdi:ip-outline", "diagnostic");
   publishDiscovery("Zappi RSSI", "zappi_rssi", "dBm", "wadsf33ew4", "mdi:wifi-check", "diagnostic");
   publishDiscovery("Zappi Wifi %", "zappi_rssi_per", "%", "wadsf33eerw4", "mdi:wifi-check", "diagnostic");
+  publishDiscovery("Zappi Menu", "menuActive", "", "zap_menu_ctx", "mdi:menu-open", "diagnostic");
+  publishDiscovery("Zappi Menu Display", "menu_layout", "", "zap_menu_disp", "mdi:monitor-dashboard", "diagnostic");
   
   // 3. Buttons & Switches
   sendButtonDiscovery("Enter", 1);
@@ -524,4 +526,21 @@ void MqttDiscoveryInitial() {
 
   char ipTopicRssiPer[128]; snprintf(ipTopicRssiPer, sizeof(ipTopicRssiPer), "%s/sensor/zappi_rssi_per/state", baseTopic);  
   mqttClient.publish(ipTopicRssiPer, 1, true, String(min(max(2 * (WiFi.RSSI() + 100.0), 0.0), 100.0)).c_str()); // Publish RSSI %
+}
+
+void publishMenuState(const char* state) {
+  char topic[128];
+  snprintf(topic, sizeof(topic), "%s/sensor/menuActive/state", baseTopic);
+
+  if (mqttClient.connected()) {
+    mqttClient.publish(topic, 1, true, state);
+  }
+}
+
+void publishMenuLayout(const char* layoutText) {
+  if (mqttClient.connected()) {
+    char topic[128];
+    snprintf(topic, sizeof(topic), "%s/sensor/menu_layout/state", baseTopic);
+    mqttClient.publish(topic, 1, false, layoutText);
+  }
 }

@@ -37,5 +37,7 @@ void sendStatusDiscoveryButton(const char *name);
 void sendRelayDiscovery(const char *name);
 void sendMenuResetDiscovery();
 void sendStateResetDiscovery();
+void publishMenuState(const char* state);
+void publishMenuLayout(const char* layoutText);
 
 #endif  // WIFI_MQTT_H

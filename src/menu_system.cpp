@@ -1,6 +1,6 @@
 #include "menu_system.h"
 #include "globals.h"
-
+#include "wifi_mqtt.h"
 
 // --- Timer Handle ---
 TimerHandle_t menuTimeoutTimer = NULL;
@@ -192,6 +192,31 @@ MenuItem vhub = { "  vHub", &m_LinkedDevicesInfo, nullptr, 0, act_LinkedDevices 
 //  LOGIC & NAVIGATION
 // ===============================
 
+void sendMenuToMQTT() {
+  if (!menuActive) {
+    publishMenuLayout("## Zappi Ready\nPress Enter to Open Menu");
+    return;
+  }
+
+  // Start with the Menu Title
+  String output = "## " + String(currentMenu->name) + "\n\n";
+
+  // Loop through items to build the list
+  for (int i = 0; i < currentMenu->childCount; i++) {
+    // Check if this is the selected item
+    if (i == selectedIndex) {
+      // BOLD and ARROW for selected item
+      output += "> **" + String(currentMenu->children[i]->name) + "** ✅\n"; 
+    } else {
+      // Normal text for others
+      output += "* " + String(currentMenu->children[i]->name) + "\n";
+    }
+  }
+
+  // Publish the built string
+  publishMenuLayout(output.c_str());
+}
+
 void showMenu() {
   if (mqttClient.connected()) {
       // 1. Build the topic dynamically
@@ -217,6 +242,7 @@ void showMenu() {
   json += "]}";
 
   ws.textAll(json); 
+  sendMenuToMQTT();
 }
 
 void resetAllMenuPositions(MenuItem* menu) {
@@ -270,9 +296,9 @@ void handleEnterButton() {
     menuActiveStart = millis(); 
     showMenu();
 
-    if (mqttClient.connected()) {
+    /*if (mqttClient.connected()) {
       mqttClient.publish(topicBuf, 1, true, "ON");
-    }
+    }*/
     return;
   }
 
