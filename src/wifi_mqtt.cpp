@@ -235,12 +235,12 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
   }
 
   // 2. Menu Reset
-  if (receivedTopic.equals(menuResetTopic) && payloadStr.equals("RESET")) {
+  if (receivedTopic.equals(menuResetTopic) && payloadStr.equals("PRESS")) {
     resetMenuToOff();
   }
 
   // 3. Charger Mode Reset
-  if (receivedTopic.equals(chargerResetTopic) && payloadStr.equals("RESET")) {
+  if (receivedTopic.equals(chargerResetTopic) && payloadStr.equals("PRESS")) {
     // Reset to Stopped (Counter 1)
     counter = 1;
     updateChargerState(counter); 

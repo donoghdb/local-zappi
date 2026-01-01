@@ -24,6 +24,8 @@ void setup() {
 
   // 2. Hardware (Pins & Interrupts)
   setupHardware();
+  setupLogMenus();
+  setupChargeSettingsMenus();
 
   // 3. START TASKS
   // ============================================================

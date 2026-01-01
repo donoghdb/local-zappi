@@ -23,7 +23,7 @@ extern MenuItem m_SmartBoost;
 extern MenuItem m_BoostTimer;
 extern MenuItem m_Preconditioning;
 extern MenuItem m_DefaultMode;
-extern MenuItem m_ECO_ECOPlus;
+//extern MenuItem m_ECO_ECOPlus;
 
 extern MenuItem m_TimeDate;
 extern MenuItem m_DisplaySound;
@@ -101,7 +101,7 @@ static MenuItem* information_children[] = { &m_Info1, &m_Info2, &m_Info3, &m_Inf
 static MenuItem* eventlog_children[] = { &m_E_L_Today, &m_E_L_Yest, &m_E_L_Week, &m_E_L_Custom };
 static MenuItem* chargelog_children[] = { &m_C_L_Today, &m_C_L_Yest, &m_C_L_Week, &m_C_L_Month, &m_C_L_Year, &m_C_L_Total, &m_C_L_Custom };
 static MenuItem* readings_children[] = { &m_Read1, &m_Read2, &m_Read3, &m_Read4, &m_Read5, &m_Read6, &m_Read7, &m_Read8, &m_Read9, &m_Read10, &m_Read11 };
-static MenuItem* chargesettings_children[] = { &m_ECOPLUS, &m_ManualBoost, &m_SmartBoost, &m_BoostTimer, &m_Preconditioning, &m_DefaultMode, &m_ECO_ECOPlus };
+static MenuItem* chargesettings_children[] = { &m_ECOPLUS, &m_ManualBoost, &m_SmartBoost, &m_BoostTimer, &m_Preconditioning, &m_DefaultMode };
 static MenuItem* othersettings_children[] = { &m_TimeDate, &m_DisplaySound, &m_LockFunc, &m_DownloadFirmware, &m_Internet, &m_Advanced, &m_InstallerSettings };
 static MenuItem* advanced_children[] = { &m_SupplyGrid, &m_Network, &m_LinkedDevices, &m_CTConfig, &m_eSense, &m_CompatMode, &m_System, &m_DownloadFW };
 static MenuItem* main_children[] = { &m_ChargeLog, &m_EventLog, &m_Readings, &m_Information, &m_LinkedDevicesInfo, &m_ChargeSettings, &m_OtherSettings };
@@ -127,7 +127,7 @@ MenuItem m_SmartBoost      = { "Smart Boost", &m_ChargeSettings, nullptr, 0, act
 MenuItem m_BoostTimer      = { "Boost Timer", &m_ChargeSettings, nullptr, 0, act_BoostTimer };
 MenuItem m_Preconditioning = { "Preconditioning", &m_ChargeSettings, nullptr, 0, act_Default };
 MenuItem m_DefaultMode     = { "Default Mode", &m_ChargeSettings, nullptr, 0, act_Default };
-MenuItem m_ECO_ECOPlus     = { "ECO / ECO+ Phases", &m_ChargeSettings, nullptr, 0, act_Default };
+//MenuItem m_ECO_ECOPlus     = { "ECO / ECO+ Phases", &m_ChargeSettings, nullptr, 0, act_Default };
 
 // Other Settings submenu
 MenuItem m_TimeDate        = { "Time & Date", &m_OtherSettings, nullptr, 0, act_Default };
@@ -187,6 +187,39 @@ MenuItem m_Info5 = { "Information 5/5", &m_Information, nullptr, 0, act_Informat
 MenuItem eddi = { "1 eddi  00000 W", &m_LinkedDevicesInfo, nullptr, 0, act_LinkedDevices };
 MenuItem zappi = { "1-ZAPPI 00000 W~XM", &m_LinkedDevicesInfo, nullptr, 0, act_LinkedDevices };
 MenuItem vhub = { "  vHub", &m_LinkedDevicesInfo, nullptr, 0, act_LinkedDevices };
+
+
+// --- 1. Define the "End of the Road" Item ---
+MenuItem m_LocalDataMsg = { "Go to local data", nullptr, nullptr, 0, nullptr };
+
+// --- 2. Define Child Arrays for the Time Periods ---
+// Each time period needs its own array pointing to the message above
+MenuItem* children_Today[] = { &m_LocalDataMsg };
+MenuItem* children_Yest[]  = { &m_LocalDataMsg };
+MenuItem* children_Week[]  = { &m_LocalDataMsg };
+MenuItem* children_Month[] = { &m_LocalDataMsg };
+MenuItem* children_Year[]  = { &m_LocalDataMsg };
+MenuItem* children_Total[] = { &m_LocalDataMsg };
+MenuItem* children_Custom[]= { &m_LocalDataMsg };
+
+
+// ==========================================
+//  CHARGE SETTINGS SUB-MENUS
+// ==========================================
+
+// 1. Define the "Leaf" Items (The end of the road)
+MenuItem m_Sub_EcoPlus      = { "ECO+ SETTINGS", nullptr, nullptr, 0, nullptr };
+MenuItem m_Sub_ManualBoost  = { "MANUAL BOOST SETTINGS", nullptr, nullptr, 0, nullptr };
+MenuItem m_Sub_SmartBoost   = { "SMART BOOST SETTINGS", nullptr, nullptr, 0, nullptr };
+MenuItem m_Sub_BoostTimer   = { "BOOST TIMER SETTINGS", nullptr, nullptr, 0, nullptr };
+MenuItem m_Sub_Preconditioning  = { "PRECONDITIONING SETTINGS", nullptr, nullptr, 0, nullptr };
+
+// 2. Define Child Arrays
+MenuItem* children_EcoPlus[]      = { &m_Sub_EcoPlus };
+MenuItem* children_ManualBoost[]  = { &m_Sub_ManualBoost };
+MenuItem* children_SmartBoost[]   = { &m_Sub_SmartBoost };
+MenuItem* children_BoostTimer[]   = { &m_Sub_BoostTimer };
+MenuItem* children_Preconditioning[]  = { &m_Sub_Preconditioning };
 
 // ===============================
 //  LOGIC & NAVIGATION
@@ -332,6 +365,10 @@ void handleSelectButton() {
   }
 
   currentMenu->lastSelected = selectedIndex;
+  // This tells the 'next' menu that its parent is the 'current' menu.
+  // This ensures the "Back" button returns to the correct list (Charge vs Event).
+  next->parent = currentMenu;
+
   currentMenu = next;
   selectedIndex = currentMenu->lastSelected;
   showMenu();
@@ -347,4 +384,76 @@ void handleDownButton() {
   if (!menuActive || currentMenu->childCount == 0) return;
   selectedIndex = (selectedIndex + 1) % currentMenu->childCount;
   showMenu();
+}
+
+// Call this once during startup to link everything together
+void setupLogMenus() {
+  // ==============================
+  // 1. CHARGE LOG (Full List)
+  // ==============================
+  m_C_L_Today.children = children_Today;
+  m_C_L_Today.childCount = 1;
+
+  m_C_L_Yest.children = children_Yest;
+  m_C_L_Yest.childCount = 1;
+
+  m_C_L_Week.children = children_Week;
+  m_C_L_Week.childCount = 1;
+
+  m_C_L_Month.children = children_Month;
+  m_C_L_Month.childCount = 1;
+
+  m_C_L_Year.children = children_Year;
+  m_C_L_Year.childCount = 1;
+
+  m_C_L_Total.children = children_Total;
+  m_C_L_Total.childCount = 1;
+
+  m_C_L_Custom.children = children_Custom;
+  m_C_L_Custom.childCount = 1;
+
+
+  // ==============================
+  // 2. EVENT LOG (Restricted List)
+  //Only: Today, Yesterday, Week, Custom
+  // ==============================
+  
+  // Today
+  m_E_L_Today.children = children_Today;
+  m_E_L_Today.childCount = 1;
+
+  // Yesterday
+  m_E_L_Yest.children = children_Yest;
+  m_E_L_Yest.childCount = 1;
+
+  // Week
+  m_E_L_Week.children = children_Week;
+  m_E_L_Week.childCount = 1;
+
+  // Custom
+  m_E_L_Custom.children = children_Custom;
+  m_E_L_Custom.childCount = 1;
+}
+
+// 3. Setup Function for Charge Settings Menus
+void setupChargeSettingsMenus() {
+  // Link ECO+
+  m_ECOPLUS.children = children_EcoPlus;
+  m_ECOPLUS.childCount = 1;
+
+  // Link Manual Boost
+  m_ManualBoost.children = children_ManualBoost;
+  m_ManualBoost.childCount = 1;
+
+  // Link Smart Boost
+  m_SmartBoost.children = children_SmartBoost;
+  m_SmartBoost.childCount = 1;
+
+  // Link Boost Timer
+  m_BoostTimer.children = children_BoostTimer;
+  m_BoostTimer.childCount = 1;
+
+  // Link Preconditioning
+  m_Preconditioning.children = children_Preconditioning; 
+  m_Preconditioning.childCount = 1;
 }

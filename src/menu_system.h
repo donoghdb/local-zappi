@@ -18,6 +18,8 @@ struct MenuItem {
 void showMenu();
 void resetMenuToOff();
 void resetAllMenuPositions(MenuItem* menu);
+void setupLogMenus();
+void setupChargeSettingsMenus();
 
 // Navigation Button Handlers
 void handleEnterButton();
