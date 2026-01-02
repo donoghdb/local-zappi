@@ -7,7 +7,7 @@
 #include <esp_ota_ops.h>
 
 // Options Arrays
-const char *chargerOptions[] = {"Stopped", "Eco", "Eco++", "Fast"};
+const char *chargerOptions[] = {"Stopped", "Fast", "Eco", "Eco++"};
 const char *connectionOptions[] = {"EV Connected", "EV Disconnected", "Error"};
 const char *chargingOptions[] = {
   "Not Connected", "Connected", "Charging", "Charge Complete",

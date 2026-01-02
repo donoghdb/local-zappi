@@ -202,24 +202,28 @@ void handleThreshold(int maxAdcValue) {
     // ============================================
     // 1. DETECT PLUG-IN (A -> B)
     // ============================================
-    if (oldState == STATE_A && newState == STATE_B) {
+if (oldState == STATE_A && newState == STATE_B) {
         DEBUG_PRINTLN("Car Plugged In! Checking Default Mode...");
 
         int modeToApply = 1; // Default to Stopped
 
-        // defaultMode: 1=Stopped, 2=Fast, 3=Eco, 4=Eco+, 5=MEM
+        // LOGIC: Since Internal Order matches Default Order, 
+        // we just map directly (except for MEM).
+        
         if (defaultMode == 5) {
-            // MEM: Keep the current mode (do nothing)
+            // MEM: Keep current mode
+            DEBUG_PRINTLN("Default Mode is MEM. Keeping current settings.");
             modeToApply = currentMode; 
         } else {
-            // Force the specific default mode
+            // DIRECT MAPPING (1=Stopped, 2=Fast, 3=Eco, 4=Eco+)
             modeToApply = defaultMode;
         }
 
         // Apply if different
         if (currentMode != modeToApply) {
+            DEBUG_PRINTF("Applying Default Mode: %d\n", modeToApply);
             currentMode = modeToApply;
-            updateChargerState(currentMode); // Update MQTT & PWM
+            updateChargerState(currentMode);
         }
     }
     // ============================================
