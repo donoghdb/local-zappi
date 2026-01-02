@@ -124,7 +124,7 @@ extern AsyncWebServer server;
 extern AsyncWebSocket ws;
 
 // Counter / Charger mode
-extern int counter;
+extern int currentMode;
 extern const int maxCount;
 extern int direction;
 extern volatile bool counterDirty;

@@ -19,8 +19,9 @@ void setup() {
 
   // 1. Data & Globals
   prefs.begin("zappi", false);
-  counter = prefs.getInt("counter", 1);
+  currentMode = prefs.getInt("currentMode", 1);
   counterDirty = false;
+  
 
   // 2. Hardware (Pins & Interrupts)
   setupHardware();
@@ -132,7 +133,7 @@ void setup() {
   ArduinoOTA.begin();
   
   // 8. Initial State
-  updateChargerState(counter);
+  updateChargerState(currentMode);
 
   // Initialize Watchdog with a 5-second timeout
   // If the loop() doesn't run for 5 seconds, the ESP32 reboots.

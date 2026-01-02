@@ -1,6 +1,11 @@
 #include "menu_system.h"
 #include "globals.h"
 #include "wifi_mqtt.h"
+#include <Preferences.h>
+
+// Add a new global variable for the preference
+extern Preferences prefs;
+int defaultMode = 1; // 1=Stopped, 2=Eco, 3=Eco+, 4=Fast, 5=MEM
 
 // --- Timer Handle ---
 TimerHandle_t menuTimeoutTimer = NULL;
@@ -121,13 +126,13 @@ MenuItem m_ChargeSettings  = { "Charge Settings", &m_Main, chargesettings_childr
 MenuItem m_OtherSettings   = { "Other Settings", &m_Main, othersettings_children, (uint8_t)(sizeof(othersettings_children)/sizeof(othersettings_children[0])), nullptr };
 
 // Charge Settings submenu
-MenuItem m_ECOPLUS         = { "ECO+ Settings", &m_ChargeSettings, nullptr, 0, act_Default };
-MenuItem m_ManualBoost     = { "Manual Boost", &m_ChargeSettings, nullptr, 0, act_ManualBoost };
-MenuItem m_SmartBoost      = { "Smart Boost", &m_ChargeSettings, nullptr, 0, act_SmartBoost };
-MenuItem m_BoostTimer      = { "Boost Timer", &m_ChargeSettings, nullptr, 0, act_BoostTimer };
-MenuItem m_Preconditioning = { "Preconditioning", &m_ChargeSettings, nullptr, 0, act_Default };
-MenuItem m_DefaultMode     = { "Default Mode", &m_ChargeSettings, nullptr, 0, act_Default };
-//MenuItem m_ECO_ECOPlus     = { "ECO / ECO+ Phases", &m_ChargeSettings, nullptr, 0, act_Default };
+MenuItem m_ECOPLUS         = { "ECO+ Settings...", &m_ChargeSettings, nullptr, 0, act_Default };
+MenuItem m_ManualBoost     = { "Manual Boost...", &m_ChargeSettings, nullptr, 0, act_ManualBoost };
+MenuItem m_SmartBoost      = { "Smart Boost...", &m_ChargeSettings, nullptr, 0, act_SmartBoost };
+MenuItem m_BoostTimer      = { "Boost Timer...", &m_ChargeSettings, nullptr, 0, act_BoostTimer };
+MenuItem m_Preconditioning = { "Preconditioning...", &m_ChargeSettings, nullptr, 0, act_Default };
+MenuItem m_DefaultMode     = { "Default Mode", nullptr, nullptr, 0, toggleDefaultMode };
+//MenuItem m_ECO_ECOPlus     = { "ECO / ECO+ Phases", &m_ChargeSettings, nullptr, 0, act_Default }; //removed for new firmware versions
 
 // Other Settings submenu
 MenuItem m_TimeDate        = { "Time & Date", &m_OtherSettings, nullptr, 0, act_Default };
@@ -192,15 +197,25 @@ MenuItem vhub = { "  vHub", &m_LinkedDevicesInfo, nullptr, 0, act_LinkedDevices 
 // --- 1. Define the "End of the Road" Item ---
 MenuItem m_LocalDataMsg = { "Go to local data", nullptr, nullptr, 0, nullptr };
 
-// --- 2. Define Child Arrays for the Time Periods ---
-// Each time period needs its own array pointing to the message above
-MenuItem* children_Today[] = { &m_LocalDataMsg };
-MenuItem* children_Yest[]  = { &m_LocalDataMsg };
-MenuItem* children_Week[]  = { &m_LocalDataMsg };
-MenuItem* children_Month[] = { &m_LocalDataMsg };
-MenuItem* children_Year[]  = { &m_LocalDataMsg };
-MenuItem* children_Total[] = { &m_LocalDataMsg };
-MenuItem* children_Custom[]= { &m_LocalDataMsg };
+// Child Arrays (All point to the same message)
+MenuItem* children_LogShared[] = { &m_LocalDataMsg };
+
+void setupLogMenus() {
+  // Charge Logs
+  m_C_L_Today.children = children_LogShared; m_C_L_Today.childCount = 1;
+  m_C_L_Yest.children  = children_LogShared; m_C_L_Yest.childCount  = 1;
+  m_C_L_Week.children  = children_LogShared; m_C_L_Week.childCount  = 1;
+  m_C_L_Month.children = children_LogShared; m_C_L_Month.childCount = 1;
+  m_C_L_Year.children  = children_LogShared; m_C_L_Year.childCount  = 1;
+  m_C_L_Total.children = children_LogShared; m_C_L_Total.childCount = 1;
+  m_C_L_Custom.children= children_LogShared; m_C_L_Custom.childCount= 1;
+
+  // Event Logs (Only the 4 you requested)
+  m_E_L_Today.children = children_LogShared; m_E_L_Today.childCount = 1;
+  m_E_L_Yest.children  = children_LogShared; m_E_L_Yest.childCount  = 1;
+  m_E_L_Week.children  = children_LogShared; m_E_L_Week.childCount  = 1;
+  m_E_L_Custom.children= children_LogShared; m_E_L_Custom.childCount= 1;
+}
 
 
 // ==========================================
@@ -212,14 +227,52 @@ MenuItem m_Sub_EcoPlus      = { "ECO+ SETTINGS", nullptr, nullptr, 0, nullptr };
 MenuItem m_Sub_ManualBoost  = { "MANUAL BOOST SETTINGS", nullptr, nullptr, 0, nullptr };
 MenuItem m_Sub_SmartBoost   = { "SMART BOOST SETTINGS", nullptr, nullptr, 0, nullptr };
 MenuItem m_Sub_BoostTimer   = { "BOOST TIMER SETTINGS", nullptr, nullptr, 0, nullptr };
-MenuItem m_Sub_Preconditioning  = { "PRECONDITIONING SETTINGS", nullptr, nullptr, 0, nullptr };
+MenuItem m_Sub_Precond      = { "PRECONDITIONING SETTINGS", nullptr, nullptr, 0, nullptr };
 
 // 2. Define Child Arrays
-MenuItem* children_EcoPlus[]      = { &m_Sub_EcoPlus };
-MenuItem* children_ManualBoost[]  = { &m_Sub_ManualBoost };
-MenuItem* children_SmartBoost[]   = { &m_Sub_SmartBoost };
-MenuItem* children_BoostTimer[]   = { &m_Sub_BoostTimer };
-MenuItem* children_Preconditioning[]  = { &m_Sub_Preconditioning };
+MenuItem* children_EcoPlus[]     = { &m_Sub_EcoPlus };
+MenuItem* children_ManualBoost[] = { &m_Sub_ManualBoost };
+MenuItem* children_SmartBoost[]  = { &m_Sub_SmartBoost };
+MenuItem* children_BoostTimer[]  = { &m_Sub_BoostTimer };
+MenuItem* children_Precond[]     = { &m_Sub_Precond };
+
+void setupChargeSettingsMenus() {
+  m_ECOPLUS.children         = children_EcoPlus;     m_ECOPLUS.childCount = 1;
+  m_ManualBoost.children     = children_ManualBoost; m_ManualBoost.childCount = 1;
+  m_SmartBoost.children      = children_SmartBoost;  m_SmartBoost.childCount = 1;
+  m_BoostTimer.children      = children_BoostTimer;  m_BoostTimer.childCount = 1;
+  m_Preconditioning.children = children_Precond;     m_Preconditioning.childCount = 1;
+}
+
+void setDef_Stopped() { defaultMode = 1; prefs.putInt("defaultMode", 1); showMenu(); }
+void setDef_Fast()    { defaultMode = 2; prefs.putInt("defaultMode", 2); showMenu(); }
+void setDef_Eco()     { defaultMode = 3; prefs.putInt("defaultMode", 3); showMenu(); }
+void setDef_EcoPlus() { defaultMode = 4; prefs.putInt("defaultMode", 4); showMenu(); }
+void setDef_Mem()     { defaultMode = 5; prefs.putInt("defaultMode", 5); showMenu(); }
+
+MenuItem m_DM_Stopped = { "Stopped", nullptr, nullptr, 0, setDef_Stopped };
+MenuItem m_DM_Fast    = { "Fast",    nullptr, nullptr, 0, setDef_Fast };
+MenuItem m_DM_Eco     = { "Eco",     nullptr, nullptr, 0, setDef_Eco };
+MenuItem m_DM_EcoPlus = { "Eco+",    nullptr, nullptr, 0, setDef_EcoPlus };
+MenuItem m_DM_Mem     = { "MEM",     nullptr, nullptr, 0, setDef_Mem };
+
+MenuItem* children_DefaultMode[] = { &m_DM_Stopped, &m_DM_Eco, &m_DM_EcoPlus, &m_DM_Fast, &m_DM_Mem };
+
+
+// ==========================================
+//  DEFAULT MODE TOGGLE LOGIC
+// ==========================================
+void toggleDefaultMode() {
+  // 1. Cycle the mode (1 -> 2 -> 3 -> 4 -> 5 -> 1)
+  defaultMode++;
+  if (defaultMode > 5) defaultMode = 1;
+
+  // 2. Save preference immediately
+  prefs.putInt("defaultMode", defaultMode);
+  
+  // 3. Refresh screen to show new text
+  showMenu();
+}
 
 // ===============================
 //  LOGIC & NAVIGATION
@@ -231,22 +284,35 @@ void sendMenuToMQTT() {
     return;
   }
 
-  // Start with the Menu Title
+  // Title
   String output = "## " + String(currentMenu->name) + "\n\n";
 
-  // Loop through items to build the list
   for (int i = 0; i < currentMenu->childCount; i++) {
-    // Check if this is the selected item
+    
+    // Get the base name (e.g., "Default Mode")
+    String itemName = String(currentMenu->children[i]->name);
+
+    // If the item we are drawing is the Default Mode button, append its status
+    if (currentMenu->children[i] == &m_DefaultMode) {
+      itemName += ": ";
+      switch(defaultMode) {
+        case 1: itemName += "Stopped"; break;
+        case 2: itemName += "Fast";    break;
+        case 3: itemName += "Eco";     break;
+        case 4: itemName += "Eco+";    break;
+        case 5: itemName += "MEM";     break;
+      }
+    }
+    // --------------------------
+
+    // Render the line (Selected vs Normal)
     if (i == selectedIndex) {
-      // BOLD and ARROW for selected item
-      output += "> **" + String(currentMenu->children[i]->name) + "** ✅\n"; 
+      output += "> **" + itemName + "** ✅\n"; 
     } else {
-      // Normal text for others
-      output += "* " + String(currentMenu->children[i]->name) + "\n";
+      output += "* " + itemName + "\n";
     }
   }
 
-  // Publish the built string
   publishMenuLayout(output.c_str());
 }
 
@@ -359,18 +425,20 @@ void handleSelectButton() {
   if (!menuActive) return;
   MenuItem* next = currentMenu->children[selectedIndex];
 
+  // If it's a leaf node (action only) or empty
   if (next->childCount == 0) {
     if (next->action) next->action();
     return;
   }
 
+  // --- NAVIGATION ---
   currentMenu->lastSelected = selectedIndex;
-  // This tells the 'next' menu that its parent is the 'current' menu.
-  // This ensures the "Back" button returns to the correct list (Charge vs Event).
-  next->parent = currentMenu;
+  
+  // Tell the next menu where we came from
+  next->parent = currentMenu; 
 
   currentMenu = next;
-  selectedIndex = currentMenu->lastSelected;
+  selectedIndex = currentMenu->lastSelected; // Usually 0
   showMenu();
 }
 
@@ -384,76 +452,4 @@ void handleDownButton() {
   if (!menuActive || currentMenu->childCount == 0) return;
   selectedIndex = (selectedIndex + 1) % currentMenu->childCount;
   showMenu();
-}
-
-// Call this once during startup to link everything together
-void setupLogMenus() {
-  // ==============================
-  // 1. CHARGE LOG (Full List)
-  // ==============================
-  m_C_L_Today.children = children_Today;
-  m_C_L_Today.childCount = 1;
-
-  m_C_L_Yest.children = children_Yest;
-  m_C_L_Yest.childCount = 1;
-
-  m_C_L_Week.children = children_Week;
-  m_C_L_Week.childCount = 1;
-
-  m_C_L_Month.children = children_Month;
-  m_C_L_Month.childCount = 1;
-
-  m_C_L_Year.children = children_Year;
-  m_C_L_Year.childCount = 1;
-
-  m_C_L_Total.children = children_Total;
-  m_C_L_Total.childCount = 1;
-
-  m_C_L_Custom.children = children_Custom;
-  m_C_L_Custom.childCount = 1;
-
-
-  // ==============================
-  // 2. EVENT LOG (Restricted List)
-  //Only: Today, Yesterday, Week, Custom
-  // ==============================
-  
-  // Today
-  m_E_L_Today.children = children_Today;
-  m_E_L_Today.childCount = 1;
-
-  // Yesterday
-  m_E_L_Yest.children = children_Yest;
-  m_E_L_Yest.childCount = 1;
-
-  // Week
-  m_E_L_Week.children = children_Week;
-  m_E_L_Week.childCount = 1;
-
-  // Custom
-  m_E_L_Custom.children = children_Custom;
-  m_E_L_Custom.childCount = 1;
-}
-
-// 3. Setup Function for Charge Settings Menus
-void setupChargeSettingsMenus() {
-  // Link ECO+
-  m_ECOPLUS.children = children_EcoPlus;
-  m_ECOPLUS.childCount = 1;
-
-  // Link Manual Boost
-  m_ManualBoost.children = children_ManualBoost;
-  m_ManualBoost.childCount = 1;
-
-  // Link Smart Boost
-  m_SmartBoost.children = children_SmartBoost;
-  m_SmartBoost.childCount = 1;
-
-  // Link Boost Timer
-  m_BoostTimer.children = children_BoostTimer;
-  m_BoostTimer.childCount = 1;
-
-  // Link Preconditioning
-  m_Preconditioning.children = children_Preconditioning; 
-  m_Preconditioning.childCount = 1;
 }

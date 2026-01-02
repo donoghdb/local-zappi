@@ -196,7 +196,35 @@ void handleThreshold(int maxAdcValue) {
   else if (maxAdcValue >= 1500 && maxAdcValue < 1900) newState = STATE_E; // No Power
   else if (maxAdcValue >= 0 && maxAdcValue < 1500) newState = STATE_F; // Error
 
+  // Check if State Has Changed
   if (newState != oldState) {
+    
+    // ============================================
+    // 1. DETECT PLUG-IN (A -> B)
+    // ============================================
+    if (oldState == STATE_A && newState == STATE_B) {
+        DEBUG_PRINTLN("Car Plugged In! Checking Default Mode...");
+
+        int modeToApply = 1; // Default to Stopped
+
+        // defaultMode: 1=Stopped, 2=Fast, 3=Eco, 4=Eco+, 5=MEM
+        if (defaultMode == 5) {
+            // MEM: Keep the current mode (do nothing)
+            modeToApply = currentMode; 
+        } else {
+            // Force the specific default mode
+            modeToApply = defaultMode;
+        }
+
+        // Apply if different
+        if (currentMode != modeToApply) {
+            currentMode = modeToApply;
+            updateChargerState(currentMode); // Update MQTT & PWM
+        }
+    }
+    // ============================================
+
+    // 2. Existing Logic
     if (oldState == STATE_A && newState != STATE_A) charging_state = false;
     if (oldState == STATE_C && newState == STATE_B) charging_state = true;
     
@@ -233,21 +261,33 @@ void adcMeasurementTask(void *pvParameters) {
 
 // NVS Counter Save Task
 void counterNvsTask(void *pvParameters) {
-  DEBUG_PRINTLN("Counter NVS Task Started");
+  DEBUG_PRINTLN("currentMode NVS Task Started");
   (void) pvParameters;
+  
+  // Check every 20 seconds
   const TickType_t checkDelay = pdMS_TO_TICKS(20000); 
+
   for (;;) {
+    // Only wake up if a change occurred
     if (counterDirty) {
-      if (WiFi.status() == WL_CONNECTED) {
-        DEBUG_PRINTLN("Saving counter to NVS");
-        if(prefs.getInt("counter", 1) != counter) {
-          DEBUG_PRINTLN("Counter changed, writing to NVS");
-          prefs.putInt("counter", counter);
-          counterDirty = false;
-          vTaskDelay(pdMS_TO_TICKS(200));
-        }
+      
+      // --- LOGIC UPDATE ---
+      // Only save to Flash if Default Mode is "MEM" (5).
+      // If it is 1-4 (Fixed), we don't care what the last state was.
+      if (defaultMode == 5) {
+        
+        DEBUG_PRINTLN("MEM Mode Active: Saving settings to NVS...");
+        prefs.putInt("currentMode", currentMode); 
+        
+      } else {
+        DEBUG_PRINTLN("Fixed Mode Active: Skipping NVS Save (Not needed)");
       }
+
+      // Reset the flag regardless. 
+      // We have "handled" the change (either by saving it or intentionally ignoring it).
+      counterDirty = false;
     }
+    
     vTaskDelay(checkDelay);
   }
 }
@@ -319,10 +359,10 @@ void rssiPublishTask(void *pvParameters) {
 //  CHARGER MODE LOGIC
 // ===============================
 void resetChargerModeToDefault() {
-  counter = 1; // reset to Stopped
+  currentMode = 1; // reset to Stopped
   counterDirty = false;
-  prefs.putInt("counter", counter); 
-  updateChargerState(counter);
+  prefs.putInt("currentMode", currentMode); 
+  updateChargerState(currentMode);
 }
 
 // ===============================
@@ -352,12 +392,12 @@ void handleButtons(const char *buttontopic, int index) {
   } else if (index == 1) {
     snprintf(buf, sizeof(buf), "{\"event\":\"button_press\",\"button\":\"upButton\"}");
     ws.textAll(buf);
-    if (!menuActive) counter += direction;
+    if (!menuActive) currentMode += direction;
     handleUpButton();
   } else if (index == 2) {
     snprintf(buf, sizeof(buf), "{\"event\":\"button_press\",\"button\":\"downButton\"}");
     ws.textAll(buf);
-    if (!menuActive) counter -= direction;
+    if (!menuActive) currentMode -= direction;
     handleDownButton();
   } else if (index == 3) {
     snprintf(buf, sizeof(buf), "{\"event\":\"button_press\",\"button\":\"selectButton\"}");
@@ -365,10 +405,10 @@ void handleButtons(const char *buttontopic, int index) {
     handleSelectButton();
   }
 
-  if (counter > maxCount) counter = 1;
-  else if (counter < 1) counter = 4;
+  if (currentMode > maxCount) currentMode = 1;
+  else if (currentMode < 1) currentMode = 4;
 
-  updateChargerState(counter); 
+  updateChargerState(currentMode); 
 }
 
 void updateChargerState(int &count) {

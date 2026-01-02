@@ -241,9 +241,9 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
 
   // 3. Charger Mode Reset
   if (receivedTopic.equals(chargerResetTopic) && payloadStr.equals("PRESS")) {
-    // Reset to Stopped (Counter 1)
-    counter = 1;
-    updateChargerState(counter); 
+    // Reset to Stopped (currentMode 1)
+    currentMode = 1;
+    updateChargerState(currentMode); 
   }
 
   // 4. Restart Command

@@ -2,6 +2,7 @@
 #define MENU_SYSTEM_H
 
 #include <Arduino.h>
+extern int defaultMode; // 1=Stopped, 2=Eco, 3=Eco+, 4=Fast, 5=MEM
 
 // 1. The Structure Definition
 // This MUST be here so globals.cpp knows what a "MenuItem" is.
@@ -20,6 +21,7 @@ void resetMenuToOff();
 void resetAllMenuPositions(MenuItem* menu);
 void setupLogMenus();
 void setupChargeSettingsMenus();
+void toggleDefaultMode();
 
 // Navigation Button Handlers
 void handleEnterButton();

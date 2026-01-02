@@ -79,7 +79,7 @@ AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
 // ===== Counter / Mode =====
-int counter = 0;
+int currentMode = 1; // 1=Stopped, 2=Fast, 3=Eco, 4=Eco+, 5=MEM (out of bounds, handled in logic)
 const int maxCount = 4; 
 int direction = 1;
 volatile bool counterDirty = false;
