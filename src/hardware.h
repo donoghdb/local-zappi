@@ -35,5 +35,7 @@ void handleThreshold(int maxAdcValue);
 String handleBoost(); // Toggles the relay
 void handleButtons(const char *buttontopic, int index);
 void resetChargerModeToDefault();
+void transitionToMode(int targetMode); // Move the Zappi physically to the target mode for Scheduling
+void simulateButtonPress(int pinIndex); // Simulate a physical button press on the Zappi
 
 #endif // HARDWARE_H

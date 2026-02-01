@@ -6,6 +6,13 @@ portMUX_TYPE synch = portMUX_INITIALIZER_UNLOCKED;
 // ===== Preferences =====
 Preferences prefs;
 
+// --- SCHEDULE DEFAULTS ---
+bool schedEnabled = true; // always enabled by default
+int schedStartHour = 2; // 02:00 AM
+int schedStartMin = 0;
+int schedEndHour = 6;   // 06:00 AM
+int schedEndMin = 0;
+
 // ===== Pins  =====
 const int switchPin = 17;
 

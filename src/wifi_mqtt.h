@@ -12,6 +12,7 @@ void setupMqtt(); // Helper to configure the client
 void checkSignalHealth();
 
 // Callbacks
+void timeSyncNotificationCallback(struct timeval *tv);
 void wifiConnected(WiFiEvent_t event, WiFiEventInfo_t info);
 void wifiDisconnected(WiFiEvent_t event, WiFiEventInfo_t info);
 void onMqttConnect(bool sessionPresent);
@@ -39,5 +40,8 @@ void sendMenuResetDiscovery();
 void sendStateResetDiscovery();
 void publishMenuState(const char* state);
 void publishMenuLayout(const char* layoutText);
+void sendScheduleDiscovery();
+void sendTimeDiscovery();
+void publishSystemTime();
 
 #endif  // WIFI_MQTT_H

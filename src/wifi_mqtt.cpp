@@ -5,6 +5,8 @@
 #include "menu_system.h" 
 #include "web_server.h"  
 #include <esp_ota_ops.h>
+#include <time.h>
+#include <esp_sntp.h>
 
 // Options Arrays
 const char *chargerOptions[] = {"Stopped", "Fast", "Eco", "Eco++"};
@@ -16,6 +18,7 @@ const char *chargingOptions[] = {
 
 unsigned long lastRssiCheck = 0;
 const int MIN_RSSI_THRESHOLD = -85; // Signal is "bad" if worse than -85dBm
+int lastPublishedMin = -1; // To track when to update system time
 
 // ===============================
 //  TOPIC SETUP (Merged from setupTopics.cpp)
@@ -66,6 +69,16 @@ void setupTopics() {
 //  CONNECTION LOGIC
 // ===============================
 
+// This function runs automatically the moment time is successfully synced
+void timeSyncNotificationCallback(struct timeval *tv) {
+    DEBUG_PRINTLN("✅ SNTP: Time Synchronized Successfully!");
+    
+    // Print the exact time right now to prove it
+    struct tm timeinfo;
+    getLocalTime(&timeinfo);
+    DEBUG_PRINTF("✅ Current Time: %02d:%02d\n", timeinfo.tm_hour, timeinfo.tm_min);
+}
+
 void connectToWifi() {
   DEBUG_PRINTLN("Scanning for strongest AP...");
   
@@ -114,11 +127,47 @@ void connectToMqtt() {
   setupTopics(); 
   
   DEBUG_PRINTLN("Connecting to MQTT...");
+
+  // 1. THE DEATH CERTIFICATE (Last Will)
+  // We use a 'static' buffer so the memory stays valid while connecting
+  static char lwtTopic[128]; 
+  snprintf(lwtTopic, sizeof(lwtTopic), "%s/status", baseTopic);
+
+  // Topic, QoS, Retain, Payload
+  mqttClient.setWill(lwtTopic, 1, true, "offline");
+
+  // 2. SERVER & CREDENTIALS (Crucial!)
+  mqttClient.setServer(mqttServer, mqttPort);
+  
+  // --- RESTORED THIS LINE ---
+  mqttClient.setCredentials(mqttUser, mqttPassword); 
+  // --------------------------
+
+  // 3. CONNECT
   mqttClient.connect();
 }
 
 void wifiConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
-  DEBUG_PRINTLN("WiFi connected");
+  DEBUG_PRINTLN("WiFi Connected! IP Address:");
+  DEBUG_PRINTLN(WiFi.localIP());
+
+  // =======================================================
+  
+  // 1. Set the Callback (So we see the "✅" log immediately when it works)
+  sntp_set_time_sync_notification_cb(timeSyncNotificationCallback);
+
+  // 2. Set Timezone (GMT0 with 1hr Daylight Savings)
+  // This helps the system calculate offsets correctly
+  configTzTime("GMT0BST,M3.5.0/1,M10.5.0", "216.239.35.0", "129.6.15.28", "pool.ntp.org");
+  
+  // Note: 
+  // "216.239.35.0" is time.google.com (IP address)
+  // "129.6.15.28"  is time.nist.gov (IP address)
+  // We use IPs to bypass any DNS issues.
+
+  DEBUG_PRINTLN("NTP Time Sync Initiated (Using Direct IPs)...");
+  // =======================================================
+
   connectToMqtt();
 }
 
@@ -166,7 +215,7 @@ void onMqttConnect(bool sessionPresent) {
   DEBUG_PRINTLN("Connected to MQTT broker (async)");
 
   // ============================================================
-  //  OTA SUCCESS CONFIRMATION
+  //  1. OTA SUCCESS CONFIRMATION
   // ============================================================
   const esp_partition_t *running = esp_ota_get_running_partition();
   esp_ota_img_states_t ota_state;
@@ -177,29 +226,60 @@ void onMqttConnect(bool sessionPresent) {
       }
   }
   
-  // Subscribe to topics
-  // Note: Using dynamic topics from globals would be safer, but subscription strings
-  // must be const char*. We can construct them or use the buffers if they are ready.
-  // For now, using the hardcoded "zappi/..." pattern you had is okay if baseTopic doesn't change.
-  
-  // 1. Relay (Boost) Command
-  char subRelayTopic[128];
-  snprintf(subRelayTopic, sizeof(subRelayTopic), "%s/switch/relay/command", baseTopic);
-  mqttClient.subscribe(subRelayTopic, 1);
+  // ============================================================
+  //  2. SUBSCRIBE TO TOPICS & BRITH CERTIFICATE
+  // ============================================================
 
-  // 2. Global Commands
+  // --- THE BIRTH CERTIFICATE ---
+  // We are alive! Publish "online"
+  String statusTopic = String(baseTopic) + "/status";
+  mqttClient.publish(statusTopic.c_str(), 1, true, "online");
+  
+  // A. Relay (Boost) Command
+  char subTopicBuf[128]; // Reusable buffer for subscriptions
+  snprintf(subTopicBuf, sizeof(subTopicBuf), "%s/switch/relay/command", baseTopic);
+  mqttClient.subscribe(subTopicBuf, 1);
+
+  // B. Global Commands
   mqttClient.subscribe(menuResetTopic, 1);
   mqttClient.subscribe(chargerResetTopic, 1);
   mqttClient.subscribe(charger_reboot, 1);
   mqttClient.subscribe(zappi_charging_state, 1);
 
+  // C. Button Commands (Loop)
   for (int i = 0; i < 4; i++) {
-    char subTopic[128];
-    snprintf(subTopic, sizeof(subTopic), "%s/button/button%d/command", baseTopic, i + 1);
-    mqttClient.subscribe(subTopic, 1);
+    snprintf(subTopicBuf, sizeof(subTopicBuf), "%s/button/button%d/command", baseTopic, i + 1);
+    mqttClient.subscribe(subTopicBuf, 1);
   }
 
-  // Initial Publishes
+  // --- NEW: SCHEDULE SUBSCRIPTIONS ---
+  
+  // D. Schedule Enable Switch
+  snprintf(subTopicBuf, sizeof(subTopicBuf), "%s/switch/zap_sch_en/command", baseTopic);
+  mqttClient.subscribe(subTopicBuf, 1);
+  DEBUG_PRINT("Subscribed to: "); DEBUG_PRINTLN(subTopicBuf);
+
+  // E. Schedule Start Time (Text)
+  snprintf(subTopicBuf, sizeof(subTopicBuf), "%s/text/zap_sch_start/set", baseTopic);
+  mqttClient.subscribe(subTopicBuf, 1);
+  DEBUG_PRINT("Subscribed to: "); DEBUG_PRINTLN(subTopicBuf);
+
+  // F. Schedule End Time (Text)
+  snprintf(subTopicBuf, sizeof(subTopicBuf), "%s/text/zap_sch_end/set", baseTopic);
+  mqttClient.subscribe(subTopicBuf, 1);
+  DEBUG_PRINT("Subscribed to: "); DEBUG_PRINTLN(subTopicBuf);
+
+  // G. Time Sync (Epoch Timestamp)
+  snprintf(subTopicBuf, sizeof(subTopicBuf), "%s/time/set_epoch", baseTopic);
+  mqttClient.subscribe(subTopicBuf, 1);
+  DEBUG_PRINT("Subscribed to: "); DEBUG_PRINTLN(subTopicBuf);
+
+  // ============================================================
+
+
+  // ============================================================
+  //  3. INITIAL PUBLISHES
+  // ============================================================
   char menuActiveTopic[128];
   snprintf(menuActiveTopic, sizeof(menuActiveTopic), "%s/sensor/menuActive/state", baseTopic);
   mqttClient.publish(menuActiveTopic, 1, true, "OFF");
@@ -207,7 +287,7 @@ void onMqttConnect(bool sessionPresent) {
   mqttClient.publish(dutyCycleStateTopic, 1, true, "0");
   mqttClient.publish(dutyCycleAmpsStateTopic, 1, true, "0");
 
-  // Run Discovery
+  // Run Discovery (and Initial Schedule State publish inside it)
   MqttDiscoveryInitial();
 }
 
@@ -226,7 +306,8 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
   String receivedTopic = String(topic);
 
   // Debug
-  DEBUG_PRINT("Msg received on: "); DEBUG_PRINTLN(topic);
+  DEBUG_PRINT("MQTT RX: "); DEBUG_PRINT(receivedTopic);
+  DEBUG_PRINT(" | Payload: "); DEBUG_PRINTLN(payloadStr);
 
   // 1. Charging State Override
   if (receivedTopic.equals(zappi_charging_state)) {
@@ -285,6 +366,102 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
       //char btnState[128];
       //snprintf(btnState, sizeof(btnState), "%s/button/button%d/state", baseTopic, i + 1);
       handleButtons(nullptr, i); // Logic inside hardware.cpp
+    }
+  }
+  // 7. Schedule Commands
+
+  // =================================================================
+  // 7.1. SCHEDULE ENABLE SWITCH
+  // =================================================================
+
+  // Buffers for dynamic topic generation
+  char targetCmd[128];
+  char targetState[128];
+  // Generate: "zappi/switch/zap_sch_en/command"
+  snprintf(targetCmd, sizeof(targetCmd), "%s/switch/zap_sch_en/command", baseTopic);
+
+  if (receivedTopic.equals(targetCmd)) {
+    // Update Variable & Memory
+    schedEnabled = (payloadStr == "ON");
+    prefs.putBool("schedEnabled", schedEnabled);
+
+    // Send Confirmation State Back
+    snprintf(targetState, sizeof(targetState), "%s/switch/zap_sch_en/state", baseTopic);
+    mqttClient.publish(targetState, 1, true, schedEnabled ? "ON" : "OFF");
+
+    DEBUG_PRINTF("Schedule Enabled: %s\n", schedEnabled ? "ON" : "OFF");
+  }
+
+
+  // =================================================================
+  // 7.2. START TIME (Text Input)
+  // =================================================================
+  // Generate: "zappi/text/zap_sch_start/set"
+  snprintf(targetCmd, sizeof(targetCmd), "%s/text/zap_sch_start/set", baseTopic);
+
+  if (receivedTopic.equals(targetCmd)) {
+    int h, m;
+    // Attempt to parse HH:MM
+    if (sscanf(payloadStr.c_str(), "%d:%d", &h, &m) == 2) {
+      schedStartHour = h;
+      schedStartMin = m;
+      prefs.putInt("schedStartH", h);
+      prefs.putInt("schedStartM", m);
+
+      // CONFIRM BACK TO HA
+      snprintf(targetState, sizeof(targetState), "%s/text/zap_sch_start/state", baseTopic);
+      mqttClient.publish(targetState, 1, true, payloadStr.c_str());
+
+      DEBUG_PRINTF("Action: Start Time Set -> %02d:%02d\n", h, m);
+    } else {
+      DEBUG_PRINTLN("Error: Failed to parse Start Time format");
+    }
+  }
+
+
+  // =================================================================
+  // 7.3. END TIME (Text Input)
+  // =================================================================
+  // Generate: "zappi/text/zap_sch_end/set"
+  snprintf(targetCmd, sizeof(targetCmd), "%s/text/zap_sch_end/set", baseTopic);
+
+  if (receivedTopic.equals(targetCmd)) {
+    int h, m;
+    if (sscanf(payloadStr.c_str(), "%d:%d", &h, &m) == 2) {
+      schedEndHour = h;
+      schedEndMin = m;
+      prefs.putInt("schedEndH", h);
+      prefs.putInt("schedEndM", m);
+
+      // CONFIRM BACK TO HA
+      snprintf(targetState, sizeof(targetState), "%s/text/zap_sch_end/state", baseTopic);
+      mqttClient.publish(targetState, 1, true, payloadStr.c_str());
+
+      DEBUG_PRINTF("Action: End Time Set -> %02d:%02d\n", h, m);
+    } else {
+      DEBUG_PRINTLN("Error: Failed to parse End Time format");
+    }
+  }
+
+  // =================================================================
+  // 8. FORCE TIME SYNC (From Home Assistant)
+  // =================================================================
+  snprintf(targetCmd, sizeof(targetCmd), "%s/time/set_epoch", baseTopic);
+
+  if (receivedTopic.equals(targetCmd)) {
+    // Payload should be a large number (Epoch timestamp)
+    long epoch = atol(payloadStr.c_str());
+    
+    if (epoch > 1600000000) { // Basic sanity check (Must be > Year 2020)
+      struct timeval tv;
+      tv.tv_sec = epoch;  // Set seconds
+      tv.tv_usec = 0;     // Zero microseconds
+      settimeofday(&tv, NULL); // <--- FORCE SYSTEM TIME
+      
+      DEBUG_PRINTF("✅ MQTT: Forced Time Update to Epoch: %ld\n", epoch);
+      
+      // Optional: Trigger your "System Time" publisher immediately to confirm
+      publishSystemTime();
     }
   }
 }
@@ -401,7 +578,11 @@ void sendRelayDiscovery(const char *name) {
   discoveryDoc["uniq_id"] = "relay1";
   
   JsonObject dev = discoveryDoc["dev"].to<JsonObject>();
-  dev["name"] = deviceName; dev["ids"] = deviceIdentifiers; dev["mdl"] = deviceModel; dev["mf"] = deviceManufacturer; dev["sw"] = deviceSwVersion;
+  dev["name"] = deviceName; 
+  dev["ids"] = deviceIdentifiers; 
+  dev["mdl"] = deviceModel; 
+  dev["mf"] = deviceManufacturer; 
+  dev["sw"] = deviceSwVersion;
 
   String discoveryPayload; serializeJson(discoveryDoc, discoveryPayload);
   
@@ -446,20 +627,89 @@ void sendStateResetDiscovery() {
   DEBUG_PRINTLN("State Reset Discovery Sent");
 }
 
+void publishSystemTime() {
+  if (!mqttClient.connected()) return;
+
+  // 1. SAFETY CHECK (The Anti-Crash Fix)
+  time_t now;
+  time(&now);
+  if (now < 1600000000) {
+    // Time not valid yet. Do nothing.
+    return; 
+  }
+
+  // 2. Safe to get details now
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) return; 
+
+  // Only publish if minute changed
+  if (timeinfo.tm_min != lastPublishedMin) {
+    lastPublishedMin = timeinfo.tm_min;
+
+    char timeStr[16];
+    char topicBuf[128];
+
+    snprintf(timeStr, sizeof(timeStr), "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
+    
+    // Dynamic Topic
+    snprintf(topicBuf, sizeof(topicBuf), "%s/sensor/system_time/state", baseTopic);
+    mqttClient.publish(topicBuf, 1, true, timeStr);
+  }
+}
+
+void sendTimeDiscovery() {
+  JsonDocument discoveryDoc;
+  char payloadBuffer[1024];
+  char topicBuffer[128];
+  char stateTopic[128];
+
+  discoveryDoc.clear();
+  discoveryDoc["name"] = "System Time";
+  
+  // Dynamic Topic
+  snprintf(stateTopic, sizeof(stateTopic), "%s/sensor/system_time/state", baseTopic);
+  discoveryDoc["stat_t"] = stateTopic;
+  
+  discoveryDoc["unique_id"] = "zappi_sys_time";
+  discoveryDoc["icon"] = "mdi:clock-check"; // Nice checkmark clock icon
+  discoveryDoc["val_tpl"] = "{{ value }}";  // Just show the raw text (HH:MM)
+
+  JsonObject dev = discoveryDoc["dev"].to<JsonObject>();
+  dev["name"] = deviceName;
+  dev["ids"] = deviceIdentifiers;
+  dev["mdl"] = deviceModel;
+  dev["mf"] = deviceManufacturer;
+  dev["sw"] = deviceSwVersion;
+
+  // Publish Config
+  snprintf(topicBuffer, sizeof(topicBuffer), "%s/sensor/system_time/config", haPrefix);
+  serializeJson(discoveryDoc, payloadBuffer);
+  
+  if (mqttClient.connected()) {
+    mqttClient.publish(topicBuffer, 1, true, payloadBuffer);
+    DEBUG_PRINTLN("System Time Discovery Sent");
+  }
+}
 // Function to send button discovery message
 void sendStatusDiscoveryButton(const char *name)
 {
+  // 1. Define the topic that tracks Online/Offline status
+  // We use a shorter, standard topic for LWT
+  String statusTopic = String(baseTopic) + "/status"; 
+  
   String discoveryTopic = String(haPrefix) + "/binary_sensor/zappi_status/config";
-  String zappi_status = String(baseTopic) + "/binary_sensor/zappi_status/state";
 
   JsonDocument discoveryDoc;
   discoveryDoc["name"] = name;
-  discoveryDoc["stat_t"] = zappi_status;
+  discoveryDoc["stat_t"] = statusTopic; // Listen to the Status Topic
+  
+  discoveryDoc["pl_on"] = "online";     // Payload for "Connected"
+  discoveryDoc["pl_off"] = "offline";   // Payload for "Disconnected"
+  
   discoveryDoc["ent_cat"] = "diagnostic";
   discoveryDoc["dev_cla"] = "connectivity";
-  discoveryDoc["uniq_id"] = "status132";
-  // discoveryDoc["pl_on"] = "";
-  // discoveryDoc["pl_off"] = "";
+  discoveryDoc["uniq_id"] = "zappi_status_132";
+
   discoveryDoc["dev"]["name"] = deviceName;
   discoveryDoc["dev"]["ids"] = deviceIdentifiers;
   discoveryDoc["dev"]["mdl"] = deviceModel;
@@ -471,14 +721,108 @@ void sendStatusDiscoveryButton(const char *name)
 
   // Publish the discovery message
   if (mqttClient.connected()) {
-    mqttClient.publish(discoveryTopic.c_str(),1,true,discoveryPayload.c_str());
-    mqttClient.publish(zappi_status.c_str(),1,true,"ON");
+    mqttClient.publish(discoveryTopic.c_str(), 1, true, discoveryPayload.c_str());
+    
+    // NOTE: We do NOT publish "ON" here anymore. 
+    // That happens in the 'Birth Certificate' in onMqttConnect.
   }
-  //client.publish(discoveryTopic.c_str(), discoveryPayload.c_str(),true);
-  DEBUG_PRINTLN("Status Button Discovery Sent");
+  DEBUG_PRINTLN("Status Sensor Discovery Sent");
+}
 
-  //String zappi_status = String(baseTopic) + "/binary_sensor/zappi_status/state";
-  //client.publish(zappi_status.c_str(), "ON", true);
+// Funtion to send schedule-related discovery messages
+void sendScheduleDiscovery() {
+  JsonDocument discoveryDoc;
+  char payloadBuffer[1024];
+  char topicBuffer[128];
+  
+  // Temporary buffers to hold the dynamic topic strings
+  char cmdTopic[128];
+  char statTopic[128];
+
+  // ==========================================
+  // 1. SCHEDULE ENABLE SWITCH
+  // ==========================================
+  discoveryDoc.clear();
+  discoveryDoc["name"] = "Schedule Enable";
+  
+  // DYNAMIC TOPIC GENERATION
+  snprintf(cmdTopic, sizeof(cmdTopic), "%s/switch/zap_sch_en/command", baseTopic);
+  snprintf(statTopic, sizeof(statTopic), "%s/switch/zap_sch_en/state", baseTopic);
+  discoveryDoc["cmd_t"] = cmdTopic;
+  discoveryDoc["stat_t"] = statTopic;
+  
+  discoveryDoc["unique_id"] = "zap_sch_en";
+  discoveryDoc["icon"] = "mdi:calendar-clock";
+  discoveryDoc["dev_cla"] = "switch"; 
+
+  JsonObject dev = discoveryDoc["dev"].to<JsonObject>();
+  dev["name"] = deviceName;
+  dev["ids"] = deviceIdentifiers;
+  dev["mdl"] = deviceModel;
+  dev["mf"] = deviceManufacturer;
+  dev["sw"] = deviceSwVersion;
+
+  snprintf(topicBuffer, sizeof(topicBuffer), "%s/switch/zap_sch_en/config", haPrefix);
+  serializeJson(discoveryDoc, payloadBuffer);
+  if (mqttClient.connected()) mqttClient.publish(topicBuffer, 1, true, payloadBuffer);
+
+
+  // ==========================================
+  // 2. SCHEDULE START TIME (Text Input)
+  // ==========================================
+  discoveryDoc.clear();
+  discoveryDoc["name"] = "Schedule Start";
+  
+  // DYNAMIC TOPICS (Using 'text' to match your handler)
+  snprintf(cmdTopic, sizeof(cmdTopic), "%s/text/zap_sch_start/set", baseTopic);
+  snprintf(statTopic, sizeof(statTopic), "%s/text/zap_sch_start/state", baseTopic);
+  discoveryDoc["cmd_t"] = cmdTopic; 
+  discoveryDoc["stat_t"] = statTopic;
+  
+  discoveryDoc["unique_id"] = "zap_sch_start";
+  discoveryDoc["icon"] = "mdi:clock-digital";
+  discoveryDoc["pattern"] = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"; 
+
+  dev = discoveryDoc["dev"].to<JsonObject>();
+  dev["name"] = deviceName;
+  dev["ids"] = deviceIdentifiers;
+  dev["mdl"] = deviceModel;
+  dev["mf"] = deviceManufacturer;
+  dev["sw"] = deviceSwVersion;
+
+  snprintf(topicBuffer, sizeof(topicBuffer), "%s/text/zap_sch_start/config", haPrefix);
+  serializeJson(discoveryDoc, payloadBuffer);
+  if (mqttClient.connected()) mqttClient.publish(topicBuffer, 1, true, payloadBuffer);
+
+
+  // ==========================================
+  // 3. SCHEDULE END TIME (Text Input)
+  // ==========================================
+  discoveryDoc.clear();
+  discoveryDoc["name"] = "Schedule End";
+  
+  // DYNAMIC TOPICS
+  snprintf(cmdTopic, sizeof(cmdTopic), "%s/text/zap_sch_end/set", baseTopic);
+  snprintf(statTopic, sizeof(statTopic), "%s/text/zap_sch_end/state", baseTopic);
+  discoveryDoc["cmd_t"] = cmdTopic;
+  discoveryDoc["stat_t"] = statTopic;
+  
+  discoveryDoc["unique_id"] = "zap_sch_end";
+  discoveryDoc["icon"] = "mdi:clock-digital";
+  discoveryDoc["pattern"] = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$";
+
+  dev = discoveryDoc["dev"].to<JsonObject>();
+  dev["name"] = deviceName;
+  dev["ids"] = deviceIdentifiers;
+  dev["mdl"] = deviceModel;
+  dev["mf"] = deviceManufacturer;
+  dev["sw"] = deviceSwVersion;
+
+  snprintf(topicBuffer, sizeof(topicBuffer), "%s/text/zap_sch_end/config", haPrefix);
+  serializeJson(discoveryDoc, payloadBuffer);
+  if (mqttClient.connected()) mqttClient.publish(topicBuffer, 1, true, payloadBuffer);
+  
+  DEBUG_PRINTLN("Schedule Discovery Sent (Dynamic)");
 }
 
 void MqttDiscoveryInitial() {
@@ -516,7 +860,9 @@ void MqttDiscoveryInitial() {
   sendStatusDiscoveryButton("Zappi Connection");
   sendMenuResetDiscovery();
   sendStateResetDiscovery();
-  
+  sendScheduleDiscovery();
+  sendTimeDiscovery();
+
   // 4. WiFi Info
   char ipTopic[128]; snprintf(ipTopic, sizeof(ipTopic), "%s/sensor/zappi_ip/state", baseTopic);
   mqttClient.publish(ipTopic, 1, true, WiFi.localIP().toString().c_str()); // Publish IP Address
@@ -526,6 +872,26 @@ void MqttDiscoveryInitial() {
 
   char ipTopicRssiPer[128]; snprintf(ipTopicRssiPer, sizeof(ipTopicRssiPer), "%s/sensor/zappi_rssi_per/state", baseTopic);  
   mqttClient.publish(ipTopicRssiPer, 1, true, String(min(max(2 * (WiFi.RSSI() + 100.0), 0.0), 100.0)).c_str()); // Publish RSSI %
+
+  // 5. Schedule Initial States
+  char stateTopic[128];
+  char timeBuf[16];
+
+  // 1. Send Switch State
+  snprintf(stateTopic, sizeof(stateTopic), "%s/switch/zap_sch_en/state", baseTopic);
+  mqttClient.publish(stateTopic, 1, true, schedEnabled ? "ON" : "OFF");
+
+  // 2. Send Start Time Text
+  snprintf(stateTopic, sizeof(stateTopic), "%s/text/zap_sch_start/state", baseTopic);
+  snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", schedStartHour, schedStartMin);
+  mqttClient.publish(stateTopic, 1, true, timeBuf);
+
+  // 3. Send End Time Text
+  snprintf(stateTopic, sizeof(stateTopic), "%s/text/zap_sch_end/state", baseTopic);
+  snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", schedEndHour, schedEndMin);
+  mqttClient.publish(stateTopic, 1, true, timeBuf);
+  
+  DEBUG_PRINTLN("Initial Schedule States Sent");
 }
 
 void publishMenuState(const char* state) {

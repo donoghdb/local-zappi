@@ -21,6 +21,12 @@ void setup() {
   prefs.begin("zappi", false);
   currentMode = prefs.getInt("currentMode", 1);
   counterDirty = false;
+  // Load Schedule from Memory (NVS)
+  schedEnabled   = prefs.getBool("schedEnabled", true);
+  schedStartHour = prefs.getInt("schedStartH", 2); // 2 AM
+  schedStartMin  = prefs.getInt("schedStartM", 0);
+  schedEndHour   = prefs.getInt("schedEndH", 6); // 6 AM
+  schedEndMin    = prefs.getInt("schedEndM", 0);
   
 
   // 2. Hardware (Pins & Interrupts)
@@ -154,6 +160,51 @@ void setup() {
   }
 }
 
+unsigned long lastScheduleCheck = 0;
+
+void checkSchedule() {
+  // 1. Throttle: Only run this check once every 5 seconds
+  if (millis() - lastScheduleCheck < 5000) return;
+  lastScheduleCheck = millis();
+
+  if (!schedEnabled) return;
+
+  // 2. THE FIX: Check 'Epoch Time' first (Non-Blocking)
+  // The internal clock starts at 0 (Year 1970). 
+  // If it's still near 0, NTP hasn't worked yet.
+  time_t now;
+  time(&now);
+  
+  // 1600000000 is roughly Year 2020. 
+  // If 'now' is less than this, we are still in 1970 (no time sync).
+  if (now < 1600000000) {
+    DEBUG_PRINTLN("Skipping Schedule: Waiting for Time Sync...");
+    return; // EXIT IMMEDIATELY -> Frees up processor for OTA/MQTT
+  }
+
+  // 3. Now it is safe to use getLocalTime (It won't block now)
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) return;
+
+  // --- START TIME -> FAST (Mode 2) ---
+  if (timeinfo.tm_hour == schedStartHour && 
+      timeinfo.tm_min == schedStartMin) {
+      if (currentMode != 2) { 
+        DEBUG_PRINTLN("Schedule: Start Time -> FAST");
+        transitionToMode(2); 
+      }
+  }
+
+  // --- END TIME -> STOPPED (Mode 1) ---
+  if (timeinfo.tm_hour == schedEndHour && 
+      timeinfo.tm_min == schedEndMin) {
+      if (currentMode != 1) { 
+        DEBUG_PRINTLN("Schedule: End Time -> STOPPED");
+        transitionToMode(1); 
+      }
+  }
+}
+
 void loop() {
   ArduinoOTA.handle();
   esp_task_wdt_reset();
@@ -167,5 +218,7 @@ void loop() {
     DEBUG_PRINTF("Free Heap: %u bytes | Max Block: %u bytes\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   }
 
+  checkSchedule(); // <--- Run the checkSchedule function
+  publishSystemTime();
   vTaskDelay(pdMS_TO_TICKS(1));
 }

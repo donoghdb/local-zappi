@@ -135,6 +135,13 @@ extern ChargingState oldState;
 extern bool charging_state;
 extern bool boot_callback; 
 
+// --- SCHEDULE VARIABLES (Extern) ---
+extern bool schedEnabled;
+extern int schedStartHour;
+extern int schedStartMin;
+extern int schedEndHour;
+extern int schedEndMin;
+
 // ===== MQTT Topics =====
 #define TOPIC_BUF_LEN 128
 

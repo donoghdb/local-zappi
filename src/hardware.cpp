@@ -24,7 +24,7 @@ void setupHardware() {
   pinMode(switchPin, OUTPUT);
   digitalWrite(switchPin, LOW); // Default OFF
 
-  // Setup Buttons
+  // Setup Buttons (Enter, Up, Down, Select)
   for (int i = 0; i < 4; i++) {
     pinMode(buttonPins[i], OUTPUT);
     digitalWrite(buttonPins[i], LOW);
@@ -473,4 +473,47 @@ void publishChargingState(ChargingState &newState) {
      mqttClient.publish(carStateTopic, 1, true, car_connection_status.c_str());
   }
   broadcastStatus();
+}
+
+void transitionToMode(int targetMode) {
+  if (currentMode == targetMode) return; // Already there
+
+  DEBUG_PRINTF("Transitioning from Mode %d to %d\n", currentMode, targetMode);
+
+  // LOGIC: Calculate steps
+  // Order: 1=Stopped, 2=Fast, 3=Eco, 4=Eco+
+  
+  int diff = targetMode - currentMode;
+
+  if (diff > 0) {
+    // Target is higher (e.g., Stopped(1) -> Fast(2))
+    // We need to press UP 'diff' times
+    for (int i = 0; i < diff; i++) {
+      simulateButtonPress(1); // Index 1 = UP Button (could go either way)
+    }
+  } 
+  else {
+    // Target is lower (e.g., Fast(2) -> Stopped(1))
+    // We need to press DOWN 'diff' times (diff is negative, so use -diff)
+    for (int i = 0; i < -diff; i++) {
+      simulateButtonPress(2); // Index 2 = DOWN Button (could go either way)
+    }
+  }
+
+  // Now that the physical clicks are done, update the internal memory
+  currentMode = targetMode;
+  updateChargerState(currentMode); // Update MQTT and other variables
+  
+  // Optional: Save to NVS immediately if you want this to persist
+  prefs.putInt("currentMode", currentMode); 
+}
+
+// Helper to physically click a button
+void simulateButtonPress(int pinIndex) {
+  DEBUG_PRINTF("Simulating Button Click on Pin Index: %d\n", pinIndex);
+  
+  digitalWrite(buttonPins[pinIndex], HIGH); // Press
+  delay(200);                               // Hold for 200ms (ensure Zappi registers it)
+  digitalWrite(buttonPins[pinIndex], LOW);  // Release
+  delay(400);                               // Wait 400ms before next click (debounce/UI lag)
 }

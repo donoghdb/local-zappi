@@ -53,9 +53,19 @@ Best for **Home Assistant** users. Provides native integration with zero coding.
 * **Config:** Copy `esphome/zappi.yaml` and `esphome/zappi_logic.h` to your ESPHome directory.
 * Limitations: Does not monitor or track the menu position. The monitoring of the Zappi buttons is not tested yet.
 
-### Option B: Custom C++ Firmware
+### Option B: Custom C++ Firmware (Best Option)
 Best for standalone use or custom MQTT setups.
-* **Features:** Web Interface, WebSocket Live Data, WebSerial, OTA Updates.
+## 🌟 Features
+* **Full Local Control:** No cloud dependency. Works with Home Assistant via MQTT.
+* **Offline Scheduler:** Set Start/End times directly on the device via text input (e.g., "07:30"). It handles the mode switching (Stopped ↔ Fast) automatically.
+* **Robust Time Sync:**
+    * **Primary:** NTP via Google/NIST (Direct IP to bypass DNS issues).
+    * **Backup:** "Push" time via MQTT from Home Assistant (works during internet outages).
+    * **Safety:** Scheduler only activates once the system year is verified > 2020.
+* **Live Monitoring:** View Charging State, Pilot Amps, Duty Cycle, and RSSI.
+* **Menu Navigation:** Remotely navigate the Zappi menu using the Web UI or HA.
+* **Reliability:** Includes "Last Will & Testament" (LWT) so Home Assistant immediately knows if the device loses power.
+* **Others:** Web Interface, WebSocket Live Data, WebSerial, OTA Updates.
 * **Tech Stack:** PlatformIO, AsyncWebServer.
 
 ## 🔐 Configuration (Custom Firmware)
@@ -86,6 +96,17 @@ IPAddress staticIP(192, 168, 1, 200);
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 ```
+
+### 2. MQTT Topics
+The device uses the base topic `zappi/` (configurable).
+* **Controls:** `zappi/button/...`
+* **Sensors:** `zappi/sensor/...`
+* **Status:** `zappi/status` (online/offline)
+* **Scheduler:**
+    * Enable: `zappi/switch/zap_sch_en/command` (ON/OFF)
+    * Start Time: `zappi/text/zap_sch_start/set` (HH:MM)
+    * End Time: `zappi/text/zap_sch_end/set` (HH:MM)
+    * Force Time Sync: `zappi/time/set_epoch` (Epoch Timestamp)
 
 ## ⚡ Installation (Custom Firmware / PlatformIO)
 
@@ -181,8 +202,17 @@ There is more Decoupling capacitators than required. Sometimes the power rails d
 | **Buttons** | 2 | Reset and GPIO 0 button. |
 | **Mini Relay** | 1 | Optional: Adafruit STEMMA Non-Latching Mini Relay. |
 
+## 🕒 Scheduler & Time Sync
+The device includes a **System Time Sensor** (`sensor.system_time`) to show you exactly what time the internal clock thinks it is.
 
-## 🧪 Testing the CP (Pilot) Signal (Optional Extra)
+### How it works:
+1.  **On Boot:** The device attempts to sync time via NTP using Google & NIST IPs (bypassing local DNS issues).
+2.  **Safety Check:** The scheduler **will not run** until the year is > 2020. This prevents the charger from triggering at the wrong time (e.g., 1970).
+3.  **Offline Backup:** If your internet is down, Home Assistant can "push" the time to the Zappi via MQTT automation using the topic `zappi/time/set_epoch`.
+
+
+
+## 🧪 Testing the CP (Pilot) Signal (Optional Extra if you want to verify the device before installing it)
 
 The Control Pilot (CP) line communicates the state of the EVSE to the car using specific voltage levels (+12V, +9V, +6V) and a 1kHz PWM signal.
 
