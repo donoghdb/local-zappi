@@ -46,6 +46,7 @@
 #credentials.h
 srs/credentials.cpp
 credentials.cpp
+GEMINI.md
 
 *.kicad_prl
 *.kicad_pro

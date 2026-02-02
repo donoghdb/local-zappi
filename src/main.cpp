@@ -10,10 +10,13 @@
 #include <esp_task_wdt.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 
 
 void setup() {
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Disable Brownout Detector
   Serial.begin(115200);
   DEBUG_PRINTLN("Zappi Controller Starting...");
 
@@ -182,26 +185,39 @@ void checkSchedule() {
     return; // EXIT IMMEDIATELY -> Frees up processor for OTA/MQTT
   }
 
-  // 3. Now it is safe to use getLocalTime (It won't block now)
+  // 3. Now it is safe to use getLocalTime 
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) return;
 
-  // --- START TIME -> FAST (Mode 2) ---
-  if (timeinfo.tm_hour == schedStartHour && 
-      timeinfo.tm_min == schedStartMin) {
-      if (currentMode != 2) { 
-        DEBUG_PRINTLN("Schedule: Start Time -> FAST");
-        transitionToMode(2); 
-      }
+  // Convert everything to "Minutes from Midnight" for comparison
+  int currentMins = (timeinfo.tm_hour * 60) + timeinfo.tm_min;
+  int startMins   = (schedStartHour * 60) + schedStartMin;
+  int endMins     = (schedEndHour * 60) + schedEndMin;
+
+  // Handle overnight schedules (e.g. Start 23:00, End 05:00)
+  bool inSchedule = false;
+  if (startMins < endMins) {
+    // Normal day schedule (e.g. 01:00 to 05:00)
+    inSchedule = (currentMins >= startMins && currentMins < endMins);
+  } else {
+    // Overnight schedule (e.g. 23:00 to 05:00)
+    inSchedule = (currentMins >= startMins || currentMins < endMins);
   }
 
-  // --- END TIME -> STOPPED (Mode 1) ---
-  if (timeinfo.tm_hour == schedEndHour && 
-      timeinfo.tm_min == schedEndMin) {
-      if (currentMode != 1) { 
-        DEBUG_PRINTLN("Schedule: End Time -> STOPPED");
-        transitionToMode(1); 
-      }
+  // --- LOGIC ---
+  if (inSchedule) {
+    // We SHOULD be charging. Are we?
+    if (currentMode != 2) { 
+       DEBUG_PRINTLN("Schedule: Inside Active Window -> Forcing FAST Mode");
+       transitionToMode(2);
+    }
+  } else {
+    // We SHOULD be stopped. Are we?
+    // Only stop if we are currently in FAST mode (don't override ECO manual settings)
+    if (currentMode == 2) { 
+       DEBUG_PRINTLN("Schedule: Outside Window -> Forcing STOP");
+       transitionToMode(1);
+    }
   }
 }
 

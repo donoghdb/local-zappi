@@ -82,8 +82,8 @@ void timeSyncNotificationCallback(struct timeval *tv) {
 void connectToWifi() {
   DEBUG_PRINTLN("Scanning for strongest AP...");
   
-  // 1. Scan for all networks (Synchronous scan)
-  int n = WiFi.scanNetworks();
+  // 1. Scan for all networks (Async scan)
+  int n = WiFi.scanNetworks(false, false, true, 120);
   
   // Variables to hold the best AP info
   int bestSignal = -127;
