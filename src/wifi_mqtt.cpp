@@ -194,7 +194,6 @@ void checkSignalHealth() {
 }
 
 void setupMqtt() {
-  // You can also call setupTopics() here to be safe
   setupTopics();
 
   mqttClient.setServer(mqttServer, mqttPort);
