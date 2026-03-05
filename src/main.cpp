@@ -173,15 +173,11 @@ void checkSchedule() {
   if (!schedEnabled) return;
 
   // 2. THE FIX: Check 'Epoch Time' first (Non-Blocking)
-  // The internal clock starts at 0 (Year 1970). 
-  // If it's still near 0, NTP hasn't worked yet.
   time_t now;
   time(&now);
   
-  // 1600000000 is roughly Year 2020. 
-  // If 'now' is less than this, we are still in 1970 (no time sync).
   if (now < 1600000000) {
-    DEBUG_PRINTLN("Skipping Schedule: Waiting for Time Sync...");
+    // DEBUG_PRINTLN("Skipping Schedule: Waiting for Time Sync...");
     return; // EXIT IMMEDIATELY -> Frees up processor for OTA/MQTT
   }
 
@@ -197,27 +193,45 @@ void checkSchedule() {
   // Handle overnight schedules (e.g. Start 23:00, End 05:00)
   bool inSchedule = false;
   if (startMins < endMins) {
-    // Normal day schedule (e.g. 01:00 to 05:00)
     inSchedule = (currentMins >= startMins && currentMins < endMins);
   } else {
-    // Overnight schedule (e.g. 23:00 to 05:00)
     inSchedule = (currentMins >= startMins || currentMins < endMins);
   }
 
-  // --- LOGIC ---
-  if (inSchedule) {
-    // We SHOULD be charging. Are we?
-    if (currentMode != 2) { 
-       DEBUG_PRINTLN("Schedule: Inside Active Window -> Forcing FAST Mode");
-       transitionToMode(2);
+  // ============================================================
+  // THE NEW LOGIC: EDGE-TRIGGERED SCHEDULING
+  // ============================================================
+  // 'static' variables remember their value between function calls
+  static bool wasInSchedule = false;
+  static bool scheduleInitialized = false;
+
+  // A. First run after boot & time sync
+  if (!scheduleInitialized) {
+    wasInSchedule = inSchedule;
+    scheduleInitialized = true;
+    
+    // Safety: If the ESP32 reboots in the middle of the night (inside the window),
+    // we want it to resume charging immediately.
+    if (inSchedule && currentMode != 2) {
+        DEBUG_PRINTLN("Boot: Woke up inside schedule window -> Forcing FAST");
+        transitionToMode(2);
     }
-  } else {
-    // We SHOULD be stopped. Are we?
-    // Only stop if we are currently in FAST mode (don't override ECO manual settings)
-    if (currentMode == 2) { 
-       DEBUG_PRINTLN("Schedule: Outside Window -> Forcing STOP");
-       transitionToMode(1);
-    }
+    return; 
+  }
+
+  // B. Did we JUST ENTER the schedule window?
+  if (inSchedule && !wasInSchedule) {
+    DEBUG_PRINTLN("Schedule: Window STARTED -> Forcing FAST Mode");
+    if (currentMode != 2) transitionToMode(2);
+    wasInSchedule = true;
+  } 
+  
+  // C. Did we JUST LEAVE the schedule window?
+  else if (!inSchedule && wasInSchedule) {
+    DEBUG_PRINTLN("Schedule: Window ENDED -> Forcing STOP");
+    // Only stop if we were actually Fast charging (so we don't kill a manual Eco session)
+    if (currentMode == 2) transitionToMode(1);
+    wasInSchedule = false;
   }
 }
 
