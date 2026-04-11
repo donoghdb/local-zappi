@@ -10,7 +10,7 @@ Preferences prefs;
 bool schedEnabled = true; // always enabled by default
 int schedStartHour = 2; // 02:00 AM
 int schedStartMin = 0;
-int schedEndHour = 6;   // 06:00 AM
+int schedEndHour = 5;   // 05:00 AM
 int schedEndMin = 0;
 
 // ===== Pins  =====

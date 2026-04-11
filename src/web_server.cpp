@@ -6,6 +6,7 @@
 #include <LittleFS.h>
 #include <WebSerial.h>
 #include <esp_ota_ops.h>
+#include <Update.h>
 
 
 // ===============================
@@ -104,6 +105,55 @@ void setupWebServer() {
   server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(204);
   });
+
+  // 1. Serve the HTML page
+  server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(LittleFS, "/update.html", "text/html");
+  });
+
+  // 2. Handle the Firmware File Upload
+  // AsyncWebServer requires a specific format for file uploads:
+  // (Route, Method, Request Handler, Upload Handler)
+  server.on("/update", HTTP_POST, 
+    // Request Handler: This runs AFTER the upload is totally finished
+    [](AsyncWebServerRequest *request) {
+      bool shouldReboot = !Update.hasError();
+      AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", shouldReboot ? "OK" : "FAIL");
+      response->addHeader("Connection", "close");
+      request->send(response);
+      
+      if (shouldReboot) {
+        DEBUG_PRINTLN("OTA via Web successful. Rebooting...");
+        delay(100);
+        ESP.restart();
+      }
+    },
+    // Upload Handler: This runs repeatedly as chunks of the file arrive
+    [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+      if (!index) {
+        DEBUG_PRINTF("Update Start: %s\n", filename.c_str());
+        
+        // U_FLASH tells it we are updating the sketch/firmware, not the file system
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
+          Update.printError(Serial);
+        }
+      }
+      
+      if (!Update.hasError()) {
+        if (Update.write(data, len) != len) {
+          Update.printError(Serial);
+        }
+      }
+      
+      if (final) {
+        if (Update.end(true)) {
+          DEBUG_PRINTF("Update Success: %u Bytes\n", index + len);
+        } else {
+          Update.printError(Serial);
+        }
+      }
+    }
+  );
 
   // Commands
   server.on("/resetmode", HTTP_GET, [](AsyncWebServerRequest *request) {

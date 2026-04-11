@@ -21,13 +21,26 @@
 
       /* Buttons */
       button {
-        width: 150px; height: 60px; font-size: 18px; margin: 15px;
+        width: 160px; height: 60px; font-size: 16px; 
         background-color: lightgray; border: none; border-radius: 10px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
       }
-      .button-row { display: flex; justify-content: center; gap: 10px; margin-bottom: 10px; }
-      .fa { margin-right: 10px; }
-      @keyframes blink { 0% { background-color: green; } 50% { background-color: lightgray; } 100% { background-color: green; } }
-      .blink { animation: blink 0.5s ease-in-out; }
+      button:hover {
+        background-color: #dcdcdc;
+      }
+      .button-row { 
+        display: flex; 
+        justify-content: center; 
+        flex-wrap: wrap; 
+        gap: 15px; 
+        margin: 20px auto; 
+        max-width: 800px;
+      }
+      .fa { 
+        margin-right: 8px; 
+        vertical-align: middle; 
+      }
 
       /* Status Boxes */
       .status {
@@ -118,8 +131,12 @@
         <i class="fa fa-terminal"></i> WebSerial
       </button>
       
-      <button class="mini-button" onclick="window.location.href='/upload'">
-        <i class="fa fa-upload"></i> Upload
+      <button onclick="window.location.href='/upload'">
+        <i class="fa fa-file-code fa-fw"></i> HTML OTA
+      </button>
+
+      <button onclick="window.location.href='/update'">
+        <i class="fa fa-microchip fa-fw"></i> Firmware OTA
       </button>
 
       <div id="statusIndicator">Offline</div>

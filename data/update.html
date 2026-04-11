@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zappi OTA Update</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #121212; color: #ffffff; }
+    .container { max-width: 500px; margin: 0 auto; background: #1e1e1e; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+    input[type="file"] { margin: 20px 0; }
+    button { background-color: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+    button:hover { background-color: #45a049; }
+    #progressBar { width: 100%; background-color: #333; border-radius: 5px; margin-top: 20px; display: none; overflow: hidden; height: 25px; }
+    #progress { width: 0%; height: 100%; background-color: #4CAF50; transition: width 0.2s; }
+    #status { margin-top: 15px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Zappi Firmware Update</h2>
+    <p>Select your compiled <b>firmware.bin</b> file.</p>
+    
+    <input type="file" id="fileInput" accept=".bin">
+    <br>
+    <button onclick="uploadFirmware()">Update Firmware</button>
+
+    <div id="progressBar"><div id="progress"></div></div>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    function uploadFirmware() {
+      const fileInput = document.getElementById('fileInput');
+      const file = fileInput.files[0];
+      if (!file) { alert("Please select a file first."); return; }
+
+      const formData = new FormData();
+      formData.append("update", file);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/update", true);
+
+      const status = document.getElementById('status');
+      document.getElementById('progressBar').style.display = 'block';
+      status.innerText = "Uploading... Please do not close this page.";
+
+      xhr.upload.addEventListener("progress", function(e) {
+        if (e.lengthComputable) {
+          const percentComplete = (e.loaded / e.total) * 100;
+          document.getElementById('progress').style.width = percentComplete + '%';
+          status.innerText = "Uploading: " + Math.round(percentComplete) + "%";
+        }
+      });
+
+      xhr.onload = function() {
+        if (xhr.status === 200) {
+          status.innerText = "Update Success! ESP32 is rebooting...";
+          document.getElementById('progress').style.backgroundColor = "#2196F3";
+          // Wait 10 seconds for the ESP32 to reboot, then go back to the dashboard
+          setTimeout(() => { window.location.href = "/"; }, 10000);
+        } else {
+          status.innerText = "Update failed: " + xhr.responseText;
+          document.getElementById('progress').style.backgroundColor = "#f44336";
+        }
+      };
+
+      xhr.onerror = function() {
+        status.innerText = "Network error occurred during upload.";
+      };
+
+      xhr.send(formData);
+    }
+  </script>
+</body>
+</html>

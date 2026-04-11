@@ -19,6 +19,9 @@ const char *chargingOptions[] = {
 unsigned long lastRssiCheck = 0;
 const int MIN_RSSI_THRESHOLD = -85; // Signal is "bad" if worse than -85dBm
 int lastPublishedMin = -1; // To track when to update system time
+int wifiConnectAttempts = 0;
+const int MAX_WIFI_ATTEMPTS = 6; // 6 attempts * 5 seconds = 30 seconds before AP mode
+bool inFallbackAPMode = false;
 
 // ===============================
 //  TOPIC SETUP (Merged from setupTopics.cpp)
@@ -80,6 +83,31 @@ void timeSyncNotificationCallback(struct timeval *tv) {
 }
 
 void connectToWifi() {
+  // 1. Check if we have failed too many times
+  if (wifiConnectAttempts >= MAX_WIFI_ATTEMPTS) {
+    if (!inFallbackAPMode) {
+      DEBUG_PRINTLN("⚠️ WiFi Failed completely. Starting Fallback AP...");
+      
+      // Stop the reconnection timer so it stops spamming
+      xTimerStop(wifiReconnectTimer, 0); 
+      
+      // Switch to Access Point Mode
+      WiFi.disconnect();
+      WiFi.mode(WIFI_AP);
+      WiFi.softAP("Zappi-Setup", "password123"); // The network name and password
+      
+      DEBUG_PRINTLN("✅ AP Started! Connect your phone to 'Zappi-Setup'");
+      DEBUG_PRINTLN("🌐 Web UI available at: http://192.168.4.1");
+      
+      inFallbackAPMode = true;
+    }
+    return; // Do not attempt to scan/connect anymore
+  }
+
+  // 2. We are still trying to connect...
+  wifiConnectAttempts++;
+  DEBUG_PRINTF("Scanning for AP (Attempt %d/%d)...\n", wifiConnectAttempts, MAX_WIFI_ATTEMPTS);
+
   DEBUG_PRINTLN("Scanning for strongest AP...");
   
   // 1. Scan for all networks (Async scan)
@@ -148,6 +176,11 @@ void connectToMqtt() {
 }
 
 void wifiConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
+  // RESET THE COUNTERS!
+  wifiConnectAttempts = 0; 
+  inFallbackAPMode = false;
+  WiFi.mode(WIFI_STA); // Ensure AP is off if we connected successfully
+
   DEBUG_PRINTLN("WiFi Connected! IP Address:");
   DEBUG_PRINTLN(WiFi.localIP());
 
@@ -407,11 +440,13 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
       prefs.putInt("schedStartH", h);
       prefs.putInt("schedStartM", m);
 
-      // CONFIRM BACK TO HA
+      // CONFIRM BACK TO HA (Force strict %02d:%02d format)
+      char timeBuf[16];
+      snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", h, m);
       snprintf(targetState, sizeof(targetState), "%s/text/zap_sch_start/state", baseTopic);
-      mqttClient.publish(targetState, 1, true, payloadStr.c_str());
+      mqttClient.publish(targetState, 1, true, timeBuf);
 
-      DEBUG_PRINTF("Action: Start Time Set -> %02d:%02d\n", h, m);
+      DEBUG_PRINTF("Action: Start Time Set -> %s\n", timeBuf);
     } else {
       DEBUG_PRINTLN("Error: Failed to parse Start Time format");
     }
@@ -432,11 +467,13 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
       prefs.putInt("schedEndH", h);
       prefs.putInt("schedEndM", m);
 
-      // CONFIRM BACK TO HA
+      // CONFIRM BACK TO HA (Force strict %02d:%02d format)
+      char timeBuf[16];
+      snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", h, m);
       snprintf(targetState, sizeof(targetState), "%s/text/zap_sch_end/state", baseTopic);
-      mqttClient.publish(targetState, 1, true, payloadStr.c_str());
+      mqttClient.publish(targetState, 1, true, timeBuf);
 
-      DEBUG_PRINTF("Action: End Time Set -> %02d:%02d\n", h, m);
+      DEBUG_PRINTF("Action: End Time Set -> %s\n", timeBuf);
     } else {
       DEBUG_PRINTLN("Error: Failed to parse End Time format");
     }
