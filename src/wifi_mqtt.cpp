@@ -245,7 +245,7 @@ void setupMqtt() {
 
 void onMqttConnect(bool sessionPresent) {
   DEBUG_PRINTLN("Connected to MQTT broker (async)");
-
+  mqttLog("Network: Zappi ESP32 Connected to MQTT Broker");
   // ============================================================
   //  1. OTA SUCCESS CONFIRMATION
   // ============================================================
@@ -349,6 +349,8 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
 
   // 2. Menu Reset
   if (receivedTopic.equals(menuResetTopic) && payloadStr.equals("PRESS")) {
+    mqttLog("System: Manu Reset Command Received. Resetting Menu...");
+    delay(500); // Short delay to ensure log is sent before reboot
     resetMenuToOff();
   }
 
@@ -361,6 +363,8 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
 
   // 4. Restart Command
   if (receivedTopic.equals(charger_reboot) && payloadStr.equals("restart")) {
+    mqttLog("System: Manual Reboot Command Received. Restarting ESP32...");
+    delay(500); // Short delay to ensure log is sent before reboot
     ESP.restart();
   }
 
@@ -898,6 +902,7 @@ void MqttDiscoveryInitial() {
   sendStateResetDiscovery();
   sendScheduleDiscovery();
   sendTimeDiscovery();
+  sendLogDiscovery();
 
   // 4. WiFi Info
   char ipTopic[128]; snprintf(ipTopic, sizeof(ipTopic), "%s/sensor/zappi_ip/state", baseTopic);
@@ -944,5 +949,54 @@ void publishMenuLayout(const char* layoutText) {
     char topic[128];
     snprintf(topic, sizeof(topic), "%s/sensor/menu_layout/state", baseTopic);
     mqttClient.publish(topic, 1, false, layoutText);
+  }
+}
+
+void mqttLog(const char* message) {
+  // 1. Always print locally to the Serial Monitor
+  Serial.println(message);
+
+  // 2. Only attempt to broadcast if we have a live connection
+  if (mqttClient.connected()) {
+    char logTopic[128];
+    // This will broadcast to: zappi/debug/log
+    snprintf(logTopic, sizeof(logTopic), "%s/debug/log", baseTopic);
+    
+    // publish(topic, QoS 0, retain false, payload)
+    mqttClient.publish(logTopic, 0, false, message);
+  }
+}
+
+void sendLogDiscovery() {
+  JsonDocument discoveryDoc;
+  char payloadBuffer[1024];
+  char topicBuffer[128];
+  char stateTopic[128];
+
+  discoveryDoc.clear();
+  discoveryDoc["name"] = "System Log";
+  
+  // This matches the topic you are publishing to in mqttLog()
+  snprintf(stateTopic, sizeof(stateTopic), "%s/debug/log", baseTopic);
+  discoveryDoc["stat_t"] = stateTopic;
+  
+  discoveryDoc["unique_id"] = "zappi_sys_log";
+  discoveryDoc["icon"] = "mdi:console-line";      // Nice terminal/console icon
+  discoveryDoc["entity_category"] = "diagnostic"; // Puts it in the diagnostic section
+
+  JsonObject dev = discoveryDoc["dev"].to<JsonObject>();
+  dev["name"] = deviceName;
+  dev["ids"] = deviceIdentifiers;
+  dev["mdl"] = deviceModel;
+  dev["mf"] = deviceManufacturer;
+  dev["sw"] = deviceSwVersion;
+
+  // The config topic where Home Assistant listens for new devices
+  snprintf(topicBuffer, sizeof(topicBuffer), "%s/sensor/system_log/config", haPrefix);
+  serializeJson(discoveryDoc, payloadBuffer);
+  
+  if (mqttClient.connected()) {
+    mqttClient.publish(topicBuffer, 1, true, payloadBuffer);
+    DEBUG_PRINTLN("System Log Discovery Sent");
   }
 }

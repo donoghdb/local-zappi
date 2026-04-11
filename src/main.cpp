@@ -79,6 +79,7 @@ void setup() {
   
   // 7. OTA with Watchdog Handling
   ArduinoOTA.onStart([]() {
+    mqttLog("System: Wireless OTA Update Started...");
     String type = (ArduinoOTA.getCommand() == U_FLASH) ? "sketch" : "filesystem";
     DEBUG_PRINTLN("OTA Update Start: " + type);
 
@@ -104,6 +105,7 @@ void setup() {
   });
 
   ArduinoOTA.onEnd([]() {
+    mqttLog("System: OTA Update Successful! Rebooting...");
     DEBUG_PRINTLN("\nOTA Update End");
     // Device usually reboots here, but if not, re-enable safety:
     esp_task_wdt_add(NULL); 
@@ -120,6 +122,7 @@ void setup() {
   });
 
   ArduinoOTA.onError([](ota_error_t error) {
+    mqttLog("System ERROR: OTA Update Failed!");
     DEBUG_PRINTF("Error[%u]: ", error);
     
     // If update failed, we MUST restart the Watchdog and Hardware
@@ -222,6 +225,7 @@ void checkSchedule() {
   // B. Did we JUST ENTER the schedule window?
   if (inSchedule && !wasInSchedule) {
     DEBUG_PRINTLN("Schedule: Window STARTED -> Forcing FAST Mode");
+    mqttLog("Schedule Action: Window STARTED -> Forcing FAST Mode");
     if (currentMode != 2) transitionToMode(2);
     wasInSchedule = true;
   } 
@@ -229,6 +233,7 @@ void checkSchedule() {
   // C. Did we JUST LEAVE the schedule window?
   else if (!inSchedule && wasInSchedule) {
     DEBUG_PRINTLN("Schedule: Window ENDED -> Forcing STOP");
+    mqttLog("Schedule Action: Window ENDED -> Forcing STOP");
     // Only stop if we were actually Fast charging (so we don't kill a manual Eco session)
     if (currentMode == 2) transitionToMode(1);
     wasInSchedule = false;

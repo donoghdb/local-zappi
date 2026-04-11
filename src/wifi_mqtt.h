@@ -43,5 +43,7 @@ void publishMenuLayout(const char* layoutText);
 void sendScheduleDiscovery();
 void sendTimeDiscovery();
 void publishSystemTime();
+void mqttLog(const char* message);
+void sendLogDiscovery();
 
 #endif  // WIFI_MQTT_H
