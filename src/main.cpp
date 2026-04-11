@@ -70,7 +70,7 @@ void setup() {
   WiFi.onEvent(wifiDisconnected, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   
   // Start WiFi BEFORE WebServer to prevent "Invalid mbox" crash
-  WiFi.config(staticIP, gateway, subnet); 
+  // WiFi.config(staticIP, gateway, subnet); 
   connectToWifi(); 
   
   // 6. Setup Services 
