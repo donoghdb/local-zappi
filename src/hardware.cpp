@@ -2,6 +2,9 @@
 #include "globals.h"
 #include "menu_system.h"
 #include "web_server.h" 
+#include "wifi_mqtt.h"
+
+extern void mqttLog(const char* message);
 
 // --- Task Handles ---
 TaskHandle_t updateADC = NULL;
@@ -204,6 +207,7 @@ void handleThreshold(int maxAdcValue) {
     // ============================================
 if (oldState == STATE_A && newState == STATE_B) {
         DEBUG_PRINTLN("Car Plugged In! Checking Default Mode...");
+        mqttLog("Car Plugged In! Checking Default Mode...");
 
         int modeToApply = 1; // Default to Stopped
 

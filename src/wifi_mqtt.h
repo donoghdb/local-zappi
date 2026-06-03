@@ -45,5 +45,6 @@ void sendTimeDiscovery();
 void publishSystemTime();
 void mqttLog(const char* message);
 void sendLogDiscovery();
+void checkFallbackTimeout();
 
 #endif  // WIFI_MQTT_H

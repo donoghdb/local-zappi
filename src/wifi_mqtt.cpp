@@ -23,6 +23,9 @@ int wifiConnectAttempts = 0;
 const int MAX_WIFI_ATTEMPTS = 6; // 6 attempts * 5 seconds = 30 seconds before AP mode
 bool inFallbackAPMode = false;
 
+unsigned long apStartTime = 0;
+const unsigned long AP_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
+
 // ===============================
 //  TOPIC SETUP (Merged from setupTopics.cpp)
 // ===============================
@@ -95,6 +98,8 @@ void connectToWifi() {
       WiFi.disconnect();
       WiFi.mode(WIFI_AP);
       WiFi.softAP("Zappi-Setup", "password123"); // The network name and password
+
+      apStartTime = millis(); // Start the AP timeout timer
       
       DEBUG_PRINTLN("✅ AP Started! Connect your phone to 'Zappi-Setup'");
       DEBUG_PRINTLN("🌐 Web UI available at: http://192.168.4.1");
@@ -998,5 +1003,25 @@ void sendLogDiscovery() {
   if (mqttClient.connected()) {
     mqttClient.publish(topicBuffer, 1, true, payloadBuffer);
     DEBUG_PRINTLN("System Log Discovery Sent");
+  }
+}
+
+void checkFallbackTimeout() {
+  // Only check the time if we are actually in AP mode
+  if (inFallbackAPMode) {
+    if (millis() - apStartTime > AP_TIMEOUT) {
+      DEBUG_PRINTLN("⏱️ 15 Minute AP Timeout Reached. Retrying Home WiFi...");
+      
+      // 1. Turn off the Access Point
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_STA);
+      
+      // 2. Reset the connection counters so it gets a fresh 6 attempts
+      wifiConnectAttempts = 0;
+      inFallbackAPMode = false;
+      
+      // 3. Force a new connection attempt
+      connectToWifi();
+    }
   }
 }

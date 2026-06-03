@@ -254,6 +254,7 @@ void loop() {
   }
 
   checkSchedule(); // <--- Run the checkSchedule function
+  checkFallbackTimeout();  
   publishSystemTime();
   vTaskDelay(pdMS_TO_TICKS(1));
 }
